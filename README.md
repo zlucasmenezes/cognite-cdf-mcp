@@ -2,7 +2,7 @@
 
 [Model Context Protocol](https://modelcontextprotocol.io/) server for [Cognite Data Fusion](https://docs.cognite.com/).
 
-Current tools:
+### Reads (`dataModelsAcl:READ`)
 
 | Tool | Description |
 | --- | --- |
@@ -13,7 +13,11 @@ Current tools:
 | `list_views` | List views (lean metadata, no full property dump) |
 | `get_view` | Retrieve one view by space / externalId / version |
 
-Requires CDF capability `dataModelsAcl:READ`.
+### Writes (`dataModelsAcl:WRITE`)
+
+| Tool | Description |
+| --- | --- |
+| `delete_view` | Delete one view by space / externalId / version (`dry_run` supported; dry run only needs `READ`) |
 
 ## Requirements
 
@@ -136,11 +140,12 @@ Open the Inspector URL, connect, and call the list/get tools for spaces, data mo
 
 ```
 src/cognite_cdf_mcp/
-  server.py           # MCPServer + tools
-  config.py           # pydantic-settings
-  cdf/auth.py         # credential providers
-  cdf/client.py       # CogniteClient factory
-  tools/              # list_* implementations
+  server.py              # MCPServer + tool registration
+  config.py              # pydantic-settings
+  cdf/auth.py            # credential providers
+  cdf/client.py          # CogniteClient factory
+  tools/                 # list/get/delete tool implementations
+    params.py            # shared input helpers
 ```
 
 Auth is isolated behind `create_credentials()` / `create_cognite_client()` so interactive login can be added later without changing the tools.

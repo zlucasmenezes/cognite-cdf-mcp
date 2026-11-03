@@ -1,1 +1,1 @@
-"""MCP tools for CDF data modeling discovery."""
+"""MCP tools for Cognite Data Fusion."""
