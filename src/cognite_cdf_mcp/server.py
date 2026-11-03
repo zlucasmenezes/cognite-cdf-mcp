@@ -27,6 +27,12 @@ logger = logging.getLogger("cognite_cdf_mcp")
 
 mcp = MCPServer("cognite-cdf-mcp", version="0.1.0")
 
+READ_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=True,
+)
 WRITE_ANNOTATIONS = ToolAnnotations(
     readOnlyHint=False,
     destructiveHint=True,
@@ -35,7 +41,10 @@ WRITE_ANNOTATIONS = ToolAnnotations(
 )
 
 
-@mcp.tool()
+# --- Reads -----------------------------------------------------------------
+
+
+@mcp.tool(annotations=READ_ANNOTATIONS)
 def list_data_models(
     space: str | None = None,
     all_versions: bool = False,
@@ -56,7 +65,7 @@ def list_data_models(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANNOTATIONS)
 def get_data_model(
     space: str,
     external_id: str,
@@ -79,7 +88,7 @@ def get_data_model(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANNOTATIONS)
 def list_spaces(
     include_global: bool = False,
     limit: int | None = None,
@@ -96,7 +105,7 @@ def list_spaces(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANNOTATIONS)
 def get_space(space: str) -> str:
     """Retrieve a specific space by id.
 
@@ -106,7 +115,7 @@ def get_space(space: str) -> str:
     return _get_space(client, space=space)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANNOTATIONS)
 def list_views(
     space: str | None = None,
     all_versions: bool = False,
@@ -128,7 +137,7 @@ def list_views(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ANNOTATIONS)
 def get_view(
     space: str,
     external_id: str,
@@ -147,6 +156,9 @@ def get_view(
         version=version,
         include_inherited_properties=include_inherited_properties,
     )
+
+
+# --- Writes ----------------------------------------------------------------
 
 
 @mcp.tool(annotations=WRITE_ANNOTATIONS)
