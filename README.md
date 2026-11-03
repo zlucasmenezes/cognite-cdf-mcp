@@ -7,7 +7,11 @@ Current tools:
 | Tool | Description |
 | --- | --- |
 | `list_data_models` | List data models (lean metadata + view refs) |
+| `get_data_model` | Retrieve one data model by space / externalId / version |
 | `list_spaces` | List spaces |
+| `get_space` | Retrieve one space by id |
+| `list_views` | List views (lean metadata, no full property dump) |
+| `get_view` | Retrieve one view by space / externalId / version |
 
 Requires CDF capability `dataModelsAcl:READ`.
 
@@ -126,7 +130,7 @@ uv run ruff format .
 uv run mcp dev src/cognite_cdf_mcp/server.py
 ```
 
-Open the Inspector URL, connect, and call `list_spaces` or `list_data_models`.
+Open the Inspector URL, connect, and call the list/get tools for spaces, data models, and views.
 
 ## Project layout
 
