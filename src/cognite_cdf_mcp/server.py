@@ -6,8 +6,10 @@ import logging
 import sys
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 from cognite_cdf_mcp.cdf.client import get_cognite_client
+from cognite_cdf_mcp.tools.delete_view import delete_view as _delete_view
 from cognite_cdf_mcp.tools.get_data_model import get_data_model as _get_data_model
 from cognite_cdf_mcp.tools.get_space import get_space as _get_space
 from cognite_cdf_mcp.tools.get_view import get_view as _get_view
@@ -24,6 +26,13 @@ logging.basicConfig(
 logger = logging.getLogger("cognite_cdf_mcp")
 
 mcp = MCPServer("cognite-cdf-mcp", version="0.1.0")
+
+WRITE_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=True,
+    idempotentHint=False,
+    openWorldHint=True,
+)
 
 
 @mcp.tool()
@@ -48,6 +57,29 @@ def list_data_models(
 
 
 @mcp.tool()
+def get_data_model(
+    space: str,
+    external_id: str,
+    version: str,
+    inline_views: bool = False,
+) -> str:
+    """Retrieve a specific data model by space, externalId, and version.
+
+    Requires dataModelsAcl:READ.
+    inline_views=false: views as refs (space/externalId/version).
+    inline_views=true: each view expanded with properties and implements.
+    """
+    client = get_cognite_client()
+    return _get_data_model(
+        client,
+        space=space,
+        external_id=external_id,
+        version=version,
+        inline_views=inline_views,
+    )
+
+
+@mcp.tool()
 def list_spaces(
     include_global: bool = False,
     limit: int | None = None,
@@ -62,6 +94,16 @@ def list_spaces(
         include_global=include_global,
         limit=limit,
     )
+
+
+@mcp.tool()
+def get_space(space: str) -> str:
+    """Retrieve a specific space by id.
+
+    Requires dataModelsAcl:READ.
+    """
+    client = get_cognite_client()
+    return _get_space(client, space=space)
 
 
 @mcp.tool()
@@ -107,37 +149,28 @@ def get_view(
     )
 
 
-@mcp.tool()
-def get_data_model(
+@mcp.tool(annotations=WRITE_ANNOTATIONS)
+def delete_view(
     space: str,
     external_id: str,
     version: str,
-    inline_views: bool = False,
+    dry_run: bool = False,
 ) -> str:
-    """Retrieve a specific data model by space, externalId, and version.
+    """Delete a specific view by space, externalId, and version.
 
-    Requires dataModelsAcl:READ.
-    inline_views=false: views as refs (space/externalId/version).
-    inline_views=true: each view expanded with properties and implements.
+    Requires dataModelsAcl:WRITE for an actual delete.
+    dry_run=true: only checks that the view exists and reports what would be
+    deleted (no write; dependency conflicts are not validated).
+    dry_run=false: permanently removes the view version from the project.
     """
     client = get_cognite_client()
-    return _get_data_model(
+    return _delete_view(
         client,
         space=space,
         external_id=external_id,
         version=version,
-        inline_views=inline_views,
+        dry_run=dry_run,
     )
-
-
-@mcp.tool()
-def get_space(space: str) -> str:
-    """Retrieve a specific space by id.
-
-    Requires dataModelsAcl:READ.
-    """
-    client = get_cognite_client()
-    return _get_space(client, space=space)
 
 
 def main() -> None:
