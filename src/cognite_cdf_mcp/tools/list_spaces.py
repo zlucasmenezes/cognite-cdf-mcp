@@ -9,6 +9,8 @@ from typing import Any
 from cognite.client import CogniteClient
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.params import DEFAULT_LIMIT
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +27,7 @@ def list_spaces(
     client: CogniteClient,
     *,
     include_global: bool = False,
-    limit: int | None = None,
+    limit: int = DEFAULT_LIMIT,
 ) -> str:
     """List spaces in the CDF project."""
     try:

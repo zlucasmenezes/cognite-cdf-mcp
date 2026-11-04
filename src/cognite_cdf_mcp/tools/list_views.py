@@ -9,7 +9,7 @@ from typing import Any
 from cognite.client import CogniteClient
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
-from cognite_cdf_mcp.tools.params import optional_str
+from cognite_cdf_mcp.tools.params import DEFAULT_LIMIT, optional_str
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def list_views(
     space: str | None = None,
     all_versions: bool = False,
     include_global: bool = False,
-    limit: int | None = None,
+    limit: int = DEFAULT_LIMIT,
 ) -> str:
     """List views in the CDF project (lean metadata, no property dump)."""
     space = optional_str(space)
