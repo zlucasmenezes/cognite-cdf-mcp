@@ -197,12 +197,16 @@ You can omit `env` if the process inherits a loaded `.env` via your shell, but p
 
 Pin a version with `@v0.1.0` (or another tag) on the git URL when you publish releases.
 
-## Lint / format
+## Lint / format / test
 
 ```bash
+uv sync --group dev
 uv run ruff check --fix .
 uv run ruff format .
+uv run pytest -q
 ```
+
+CI (GitHub Actions on `main` / PRs) runs ruff check + format `--check`, imports the MCP server, and pytest.
 
 ### Pre-commit
 
