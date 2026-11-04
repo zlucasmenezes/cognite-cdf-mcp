@@ -98,7 +98,7 @@ FILTER_DOCS: dict = {
         "Prefer instance_space on query/search tools instead of hand-writing node.space equals.",
         "For free-text name/alias search, use search_instances instead of filters.",
         "Pass filter as a JSON object (or JSON string). Default result limit is 100.",
-        "Use cursor from query_instances responses to page through large result sets.",
+        "Use nextCursor from query_instances and list_* schema tools to page large result sets.",
         "aggregate_instances properties are strings relative to the view, e.g. "
         '{"count": {"property": "externalId"}} or {"count": {"property": "name"}}.',
     ],

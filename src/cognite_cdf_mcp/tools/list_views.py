@@ -10,20 +10,21 @@ from cognite.client import CogniteClient
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
 from cognite_cdf_mcp.tools.params import DEFAULT_LIMIT, optional_str
+from cognite_cdf_mcp.tools.schema_page import RESOURCE_VIEWS, fetch_schema_page
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_view_summary(view: Any) -> dict[str, Any]:
+def _serialize_view_summary(item: dict[str, Any]) -> dict[str, Any]:
     return {
-        "space": view.space,
-        "externalId": view.external_id,
-        "version": view.version,
-        "name": view.name,
-        "description": view.description,
-        "usedFor": view.used_for,
-        "isGlobal": view.is_global,
-        "writable": getattr(view, "writable", None),
+        "space": item.get("space"),
+        "externalId": item.get("externalId"),
+        "version": item.get("version"),
+        "name": item.get("name"),
+        "description": item.get("description"),
+        "usedFor": item.get("usedFor"),
+        "isGlobal": item.get("isGlobal"),
+        "writable": item.get("writable"),
     }
 
 
@@ -34,20 +35,28 @@ def list_views(
     all_versions: bool = False,
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
+    cursor: str | None = None,
 ) -> str:
-    """List views in the CDF project (lean metadata, no property dump)."""
+    """List views in the CDF project (lean metadata, cursor-paginated)."""
     space = optional_str(space)
     try:
-        views = client.data_modeling.views.list(
-            space=space,
-            all_versions=all_versions,
-            include_global=include_global,
-            include_inherited_properties=False,
+        items, next_cursor = fetch_schema_page(
+            client,
+            resource_path=RESOURCE_VIEWS,
+            params={
+                "space": space,
+                "allVersions": all_versions,
+                "includeGlobal": include_global,
+                "includeInheritedProperties": False,
+            },
             limit=limit,
+            cursor=cursor,
         )
         payload = {
-            "count": len(views),
-            "items": [_serialize_view_summary(v) for v in views],
+            "count": len(items),
+            "limit": limit,
+            "nextCursor": next_cursor,
+            "items": [_serialize_view_summary(v) for v in items],
         }
         return json.dumps(payload, indent=2)
     except CogniteAPIError as exc:
