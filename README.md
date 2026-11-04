@@ -2,6 +2,8 @@
 
 [Model Context Protocol](https://modelcontextprotocol.io/) server for [Cognite Data Fusion](https://docs.cognite.com/).
 
+> **Status: early development / experimental.** APIs, tools, and config may change without notice. Not an official Cognite product. Use at your own risk — especially write tools (`apply_*` / `delete_*`). Prefer `dry_run=true` until you trust the behavior. Do not commit secrets (`CDF_TOKEN`); keep them in local `.env` or Cursor MCP `env`.
+
 ### Environments (no CDF call)
 
 | Tool | Description |
@@ -98,13 +100,13 @@ Add more with flat variables. An alias exists iff `CDF_PROJECT_<ALIAS>` is set a
 Aliases are also read from `.env`; real process env vars win.
 
 ```bash
-CDF_PROJECT=bdx-dev
-CDF_CLUSTER=az-phx-001
+CDF_PROJECT=your-dev-project
+CDF_CLUSTER=westeurope-1
 CDF_TOKEN=eyJ...
 
-CDF_PROJECT_DEV=bdx-dev
-CDF_PROJECT_QA=bdx-preprod
-CDF_PROJECT_PROD=bdx-prod
+CDF_PROJECT_DEV=your-dev-project
+CDF_PROJECT_QA=your-qa-project
+CDF_PROJECT_PROD=your-prod-project
 # CDF_CLUSTER_PROD=other-cluster
 # CDF_TOKEN_PROD=eyJ-only-if-different
 ```
@@ -157,12 +159,12 @@ One token shared by all projects (add `CDF_TOKEN_<ALIAS>` only where it differs)
       "command": "uv",
       "args": ["--directory", "/absolute/path/to/cognite-cdf-mcp", "run", "cognite-cdf-mcp"],
       "env": {
-        "CDF_PROJECT": "bdx-dev",
-        "CDF_CLUSTER": "az-phx-001",
+        "CDF_PROJECT": "your-dev-project",
+        "CDF_CLUSTER": "westeurope-1",
         "CDF_TOKEN": "eyJ...",
-        "CDF_PROJECT_DEV": "bdx-dev",
-        "CDF_PROJECT_QA": "bdx-preprod",
-        "CDF_PROJECT_PROD": "bdx-prod"
+        "CDF_PROJECT_DEV": "your-dev-project",
+        "CDF_PROJECT_QA": "your-qa-project",
+        "CDF_PROJECT_PROD": "your-prod-project"
       }
     }
   }
@@ -170,6 +172,30 @@ One token shared by all projects (add `CDF_TOKEN_<ALIAS>` only where it differs)
 ```
 
 You can omit `env` if the process inherits a loaded `.env` via your shell, but putting secrets in MCP `env` is clearer for Cursor.
+
+### Run from GitHub with `uvx` (no local clone)
+
+```json
+{
+  "mcpServers": {
+    "cognite-cdf": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/zlucasmenezes/cognite-cdf-mcp.git",
+        "cognite-cdf-mcp"
+      ],
+      "env": {
+        "CDF_PROJECT": "your-project",
+        "CDF_CLUSTER": "westeurope-1",
+        "CDF_TOKEN": "eyJ..."
+      }
+    }
+  }
+}
+```
+
+Pin a version with `@v0.1.0` (or another tag) on the git URL when you publish releases.
 
 ## Lint / format
 
