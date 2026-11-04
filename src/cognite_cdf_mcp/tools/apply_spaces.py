@@ -66,9 +66,7 @@ def apply_spaces(
         applies = [_parse_space(item) for item in items]
 
         if dry_run:
-            existing = client.data_modeling.spaces.retrieve(
-                spaces=[a.space for a in applies]
-            )
+            existing = client.data_modeling.spaces.retrieve(spaces=[a.space for a in applies])
             if existing is None:
                 existing_list: list[Any] = []
             elif hasattr(existing, "space") and not hasattr(existing, "__iter__"):
