@@ -25,6 +25,7 @@ packages = ["src/cognite_cdf_mcp"]
 [dependency-groups]
 dev = [
     "pre-commit>=4.0.0",
+    "pytest>=8.0.0",
     "ruff>=0.8.0",
 ]
 
@@ -35,3 +36,7 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
