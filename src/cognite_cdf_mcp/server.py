@@ -24,6 +24,7 @@ from cognite_cdf_mcp.tools.get_filter_docs import get_filter_docs as _get_filter
 from cognite_cdf_mcp.tools.get_instance import get_instance as _get_instance
 from cognite_cdf_mcp.tools.get_space import get_space as _get_space
 from cognite_cdf_mcp.tools.get_view import get_view as _get_view
+from cognite_cdf_mcp.tools.inspect_instance import inspect_instance as _inspect_instance
 from cognite_cdf_mcp.tools.list_containers import list_containers as _list_containers
 from cognite_cdf_mcp.tools.list_data_models import list_data_models as _list_data_models
 from cognite_cdf_mcp.tools.list_spaces import list_spaces as _list_spaces
@@ -66,16 +67,18 @@ UPSERT_ANNOTATIONS = ToolAnnotations(
 # --- Reads -----------------------------------------------------------------
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="List data models", annotations=READ_ANNOTATIONS)
 def list_data_models(
     space: str | None = None,
     all_versions: bool = False,
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
+    cursor: str | None = None,
 ) -> str:
     """List data models in the CDF project (lean metadata + view refs).
 
     Requires dataModelsAcl:READ. Default limit is 100.
+    Returns nextCursor when more pages are available.
     """
     client = get_cognite_client()
     return _list_data_models(
@@ -84,10 +87,11 @@ def list_data_models(
         all_versions=all_versions,
         include_global=include_global,
         limit=limit,
+        cursor=cursor,
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Get data model", annotations=READ_ANNOTATIONS)
 def get_data_model(
     space: str,
     external_id: str,
@@ -110,24 +114,27 @@ def get_data_model(
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="List spaces", annotations=READ_ANNOTATIONS)
 def list_spaces(
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
+    cursor: str | None = None,
 ) -> str:
     """List spaces in the CDF project.
 
     Requires dataModelsAcl:READ. Default limit is 100.
+    Returns nextCursor when more pages are available.
     """
     client = get_cognite_client()
     return _list_spaces(
         client,
         include_global=include_global,
         limit=limit,
+        cursor=cursor,
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Get space", annotations=READ_ANNOTATIONS)
 def get_space(space: str) -> str:
     """Retrieve a specific space by id.
 
@@ -137,17 +144,18 @@ def get_space(space: str) -> str:
     return _get_space(client, space=space)
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="List views", annotations=READ_ANNOTATIONS)
 def list_views(
     space: str | None = None,
     all_versions: bool = False,
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
+    cursor: str | None = None,
 ) -> str:
     """List views in the CDF project (lean metadata, no full property dump).
 
     Requires dataModelsAcl:READ. Prefer filtering by space for large projects.
-    Default limit is 100.
+    Default limit is 100. Returns nextCursor when more pages are available.
     """
     client = get_cognite_client()
     return _list_views(
@@ -156,10 +164,11 @@ def list_views(
         all_versions=all_versions,
         include_global=include_global,
         limit=limit,
+        cursor=cursor,
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Get view", annotations=READ_ANNOTATIONS)
 def get_view(
     space: str,
     external_id: str,
@@ -180,15 +189,17 @@ def get_view(
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="List containers", annotations=READ_ANNOTATIONS)
 def list_containers(
     space: str | None = None,
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
+    cursor: str | None = None,
 ) -> str:
     """List containers in the CDF project (lean metadata).
 
     Requires dataModelsAcl:READ. Default limit is 100.
+    Returns nextCursor when more pages are available.
     """
     client = get_cognite_client()
     return _list_containers(
@@ -196,10 +207,11 @@ def list_containers(
         space=space,
         include_global=include_global,
         limit=limit,
+        cursor=cursor,
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Get container", annotations=READ_ANNOTATIONS)
 def get_container(
     space: str,
     external_id: str,
@@ -212,7 +224,7 @@ def get_container(
     return _get_container(client, space=space, external_id=external_id)
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Filter DSL docs", annotations=READ_ANNOTATIONS)
 def get_filter_docs() -> str:
     """Return CDF instance filter DSL examples and property-path tips.
 
@@ -222,7 +234,7 @@ def get_filter_docs() -> str:
     return _get_filter_docs()
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Get instance", annotations=READ_ANNOTATIONS)
 def get_instance(
     space: str,
     external_id: str,
@@ -251,7 +263,29 @@ def get_instance(
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Inspect instance", annotations=READ_ANNOTATIONS)
+def inspect_instance(
+    space: str,
+    external_id: str,
+    instance_type: Literal["node", "edge"] = "node",
+    all_versions: bool = False,
+) -> str:
+    """Inspect which views and containers an instance is involved in.
+
+    Requires dataModelInstancesAcl:READ. Useful when get_instance returns empty
+    properties or you need to discover the right view projection.
+    """
+    client = get_cognite_client()
+    return _inspect_instance(
+        client,
+        space=space,
+        external_id=external_id,
+        instance_type=instance_type,
+        all_versions=all_versions,
+    )
+
+
+@mcp.tool(title="Query instances", annotations=READ_ANNOTATIONS)
 def query_instances(
     view_space: str,
     view_external_id: str,
@@ -284,7 +318,7 @@ def query_instances(
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Search instances", annotations=READ_ANNOTATIONS)
 def search_instances(
     view_space: str,
     view_external_id: str,
@@ -317,7 +351,7 @@ def search_instances(
     )
 
 
-@mcp.tool(annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Aggregate instances", annotations=READ_ANNOTATIONS)
 def aggregate_instances(
     view_space: str,
     view_external_id: str,
@@ -354,7 +388,7 @@ def aggregate_instances(
 # --- Writes ----------------------------------------------------------------
 
 
-@mcp.tool(annotations=UPSERT_ANNOTATIONS)
+@mcp.tool(title="Apply spaces", annotations=UPSERT_ANNOTATIONS)
 def apply_spaces(
     spaces: list[dict[str, Any]] | str,
     dry_run: bool = False,
@@ -369,7 +403,7 @@ def apply_spaces(
     return _apply_spaces(client, spaces=spaces, dry_run=dry_run)
 
 
-@mcp.tool(annotations=WRITE_ANNOTATIONS)
+@mcp.tool(title="Delete spaces", annotations=WRITE_ANNOTATIONS)
 def delete_spaces(
     spaces: list[str | dict[str, Any]] | str,
     dry_run: bool = False,
@@ -384,7 +418,7 @@ def delete_spaces(
     return _delete_spaces(client, spaces=spaces, dry_run=dry_run)
 
 
-@mcp.tool(annotations=UPSERT_ANNOTATIONS)
+@mcp.tool(title="Apply instances", annotations=UPSERT_ANNOTATIONS)
 def apply_instances(
     nodes: list[dict[str, Any]] | str | None = None,
     edges: list[dict[str, Any]] | str | None = None,
@@ -408,7 +442,7 @@ def apply_instances(
     )
 
 
-@mcp.tool(annotations=WRITE_ANNOTATIONS)
+@mcp.tool(title="Delete instances", annotations=WRITE_ANNOTATIONS)
 def delete_instances(
     items: list[dict[str, Any]] | str,
     instance_type: Literal["node", "edge"] = "node",
@@ -429,7 +463,7 @@ def delete_instances(
     )
 
 
-@mcp.tool(annotations=WRITE_ANNOTATIONS)
+@mcp.tool(title="Delete view", annotations=WRITE_ANNOTATIONS)
 def delete_view(
     space: str,
     external_id: str,
