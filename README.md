@@ -145,8 +145,23 @@ You can omit `env` if the process inherits a loaded `.env` via your shell, but p
 ## Lint / format
 
 ```bash
-uv run ruff check .
+uv run ruff check --fix .
 uv run ruff format .
+```
+
+### Pre-commit
+
+Runs `ruff check --fix` and `ruff format` automatically on every commit:
+
+```bash
+uv sync --group dev
+uv run pre-commit install
+```
+
+Run against all files once:
+
+```bash
+uv run pre-commit run --all-files
 ```
 
 ## Smoke test (MCP Inspector)
