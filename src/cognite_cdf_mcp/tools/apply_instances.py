@@ -19,7 +19,7 @@ from cognite.client.data_classes.data_modeling import (
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
 from cognite_cdf_mcp.tools.instances_common import serialize_instance
-from cognite_cdf_mcp.tools.params import parse_object_list
+from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, parse_object_list
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def apply_instances(
     edges: list[dict[str, Any]] | str | None = None,
     replace: bool = False,
     auto_create_direct_relations: bool = True,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
 ) -> str:
     """Create or update instances (upsert).
 
@@ -126,8 +126,9 @@ def apply_instances(
         "existingVersion": 3
       }
 
-    dry_run=true validates payloads and retrieves any existing nodes/edges
-    (no write). Requires ``dataModelInstancesAcl:WRITE`` for an actual apply.
+    Defaults to ``DEFAULT_DRY_RUN`` (validates / retrieves existing; no write).
+    Pass ``dry_run=false`` to apply. Requires ``dataModelInstancesAcl:WRITE``
+    for an actual write.
     """
     try:
         node_items = parse_object_list(nodes)

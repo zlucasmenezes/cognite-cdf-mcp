@@ -7,6 +7,10 @@ from typing import Any
 
 DEFAULT_LIMIT = 100
 
+# Experimental safety: write tools preview by default. Flip to False when ready
+# for opt-out dry-run (and update README / tool descriptions accordingly).
+DEFAULT_DRY_RUN = True
+
 
 def optional_str(value: str | None) -> str | None:
     """Treat blank strings as missing (MCP hosts often send ``\"\"``)."""

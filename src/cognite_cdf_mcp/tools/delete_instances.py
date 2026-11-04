@@ -11,7 +11,7 @@ from cognite.client.data_classes.data_modeling import EdgeId, NodeId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
 from cognite_cdf_mcp.tools.instances_common import InstanceType, serialize_instance
-from cognite_cdf_mcp.tools.params import parse_object_list
+from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, parse_object_list
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +34,13 @@ def delete_instances(
     *,
     items: list[dict[str, Any]] | str,
     instance_type: InstanceType = "node",
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
 ) -> str:
     """Delete one or more instances by space/externalId.
 
     ``items`` example: [{"space": "sp_x", "externalId": "MCH-1"}]
-    dry_run=true retrieves and reports only (no delete).
-    Requires ``dataModelInstancesAcl:WRITE`` for an actual delete.
+    Defaults to ``DEFAULT_DRY_RUN`` (retrieve/report only). Pass ``dry_run=false``
+    to delete. Requires ``dataModelInstancesAcl:WRITE`` for an actual delete.
     """
     try:
         ids = _parse_ids(parse_object_list(items))

@@ -10,7 +10,7 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import SpaceApply
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
-from cognite_cdf_mcp.tools.params import parse_object_list
+from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, parse_object_list
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def apply_spaces(
     client: CogniteClient,
     *,
     spaces: list[dict[str, Any]] | str,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
 ) -> str:
     """Create or update spaces (upsert).
 
@@ -52,8 +52,9 @@ def apply_spaces(
         "description": "Temporary sandbox"
       }
 
-    dry_run=true validates payloads and retrieves any existing spaces
-    (no write). Requires ``dataModelsAcl:WRITE`` for an actual apply.
+    Defaults to ``DEFAULT_DRY_RUN`` (validates / retrieves existing; no write).
+    Pass ``dry_run=false`` to apply. Requires ``dataModelsAcl:WRITE`` for an
+    actual write.
     """
     try:
         items = parse_object_list(spaces)

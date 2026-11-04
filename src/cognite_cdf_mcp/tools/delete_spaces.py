@@ -9,6 +9,8 @@ from typing import Any
 from cognite.client import CogniteClient
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,13 +62,13 @@ def delete_spaces(
     client: CogniteClient,
     *,
     spaces: list[str | dict[str, Any]] | str,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
 ) -> str:
     """Delete one or more spaces by id.
 
     ``spaces`` example: ``["sp_x"]`` or ``[{"space": "sp_x"}]``.
-    dry_run=true retrieves and reports only (no delete).
-    Requires ``dataModelsAcl:WRITE`` for an actual delete.
+    Defaults to ``DEFAULT_DRY_RUN`` (retrieve/report only). Pass ``dry_run=false``
+    to delete. Requires ``dataModelsAcl:WRITE`` for an actual delete.
     """
     try:
         space_ids = _parse_space_ids(spaces)

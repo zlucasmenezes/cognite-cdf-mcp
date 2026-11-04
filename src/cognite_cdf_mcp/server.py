@@ -33,7 +33,7 @@ from cognite_cdf_mcp.tools.list_containers import list_containers as _list_conta
 from cognite_cdf_mcp.tools.list_data_models import list_data_models as _list_data_models
 from cognite_cdf_mcp.tools.list_spaces import list_spaces as _list_spaces
 from cognite_cdf_mcp.tools.list_views import list_views as _list_views
-from cognite_cdf_mcp.tools.params import DEFAULT_LIMIT
+from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, DEFAULT_LIMIT
 from cognite_cdf_mcp.tools.query_instances import query_instances as _query_instances
 from cognite_cdf_mcp.tools.search_instances import search_instances as _search_instances
 
@@ -502,13 +502,13 @@ def aggregate_instances(
 @mcp.tool(title="Apply spaces", annotations=UPSERT_ANNOTATIONS)
 def apply_spaces(
     spaces: list[dict[str, Any]] | str,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
     environment: str | None = None,
 ) -> str:
     """Create or update spaces (upsert).
 
     Requires dataModelsAcl:WRITE for an actual apply.
-    dry_run=true validates payloads and reports existing spaces (no write).
+    Defaults to dry_run=true (preview only); pass dry_run=false to write.
     spaces example: [{"space": "sp_x", "name": "Sandbox", "description": "..."}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -520,13 +520,13 @@ def apply_spaces(
 @mcp.tool(title="Delete spaces", annotations=WRITE_ANNOTATIONS)
 def delete_spaces(
     spaces: list[str | dict[str, Any]] | str,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
     environment: str | None = None,
 ) -> str:
     """Delete one or more spaces by id.
 
     Requires dataModelsAcl:WRITE for an actual delete.
-    dry_run=true retrieves matching spaces only (no delete).
+    Defaults to dry_run=true (preview only); pass dry_run=false to delete.
     spaces example: ["sp_x"] or [{"space": "sp_x"}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -541,13 +541,13 @@ def apply_instances(
     edges: list[dict[str, Any]] | str | None = None,
     replace: bool = False,
     auto_create_direct_relations: bool = True,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
     environment: str | None = None,
 ) -> str:
     """Create or update instances (upsert nodes/edges).
 
     Requires dataModelInstancesAcl:WRITE for an actual apply.
-    dry_run=true validates payloads and reports existing instances (no write).
+    Defaults to dry_run=true (preview only); pass dry_run=false to write.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).
@@ -567,13 +567,13 @@ def apply_instances(
 def delete_instances(
     items: list[dict[str, Any]] | str,
     instance_type: Literal["node", "edge"] = "node",
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
     environment: str | None = None,
 ) -> str:
     """Delete one or more instances by space/externalId.
 
     Requires dataModelInstancesAcl:WRITE for an actual delete.
-    dry_run=true retrieves matching instances only (no delete).
+    Defaults to dry_run=true (preview only); pass dry_run=false to delete.
     items example: [{"space": "sp_x", "externalId": "MCH-1"}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -593,15 +593,14 @@ def delete_view(
     space: str,
     external_id: str,
     version: str,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
     environment: str | None = None,
 ) -> str:
     """Delete a specific view by space, externalId, and version.
 
     Requires dataModelsAcl:WRITE for an actual delete.
-    dry_run=true: only checks that the view exists and reports what would be
-    deleted (no write; dependency conflicts are not validated).
-    dry_run=false: permanently removes the view version from the project.
+    Defaults to dry_run=true (preview only; dependency conflicts are not validated).
+    Pass dry_run=false to permanently remove the view version from the project.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).

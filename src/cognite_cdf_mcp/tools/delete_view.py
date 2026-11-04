@@ -9,6 +9,8 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import ViewId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,12 +28,12 @@ def delete_view(
     space: str,
     external_id: str,
     version: str,
-    dry_run: bool = False,
+    dry_run: bool = DEFAULT_DRY_RUN,
 ) -> str:
     """Delete one view by space, externalId, and version.
 
-    When ``dry_run`` is True, only checks whether the view exists and reports
-    what would be deleted — no write is performed.
+    Defaults to ``DEFAULT_DRY_RUN`` (existence check / preview only). Pass
+    ``dry_run=false`` to permanently delete the view version.
     """
     view_id = ViewId(space=space, external_id=external_id, version=version)
     try:
