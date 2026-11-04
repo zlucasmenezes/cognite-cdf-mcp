@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN
+
 
 def test_server_imports_and_registers_core_tools() -> None:
     from cognite_cdf_mcp.server import mcp
@@ -16,3 +18,14 @@ def test_server_imports_and_registers_core_tools() -> None:
     assert "environment" in tools["query_instances"].parameters["properties"]
     assert "environment" not in tools["get_filter_docs"].parameters.get("properties", {})
     assert "environment" not in tools["list_environments"].parameters.get("properties", {})
+
+    # Write tools share DEFAULT_DRY_RUN (experimental safety switch).
+    for name in (
+        "apply_spaces",
+        "delete_spaces",
+        "apply_instances",
+        "delete_instances",
+        "delete_view",
+    ):
+        props = tools[name].parameters["properties"]
+        assert props["dry_run"].get("default") is DEFAULT_DRY_RUN, name
