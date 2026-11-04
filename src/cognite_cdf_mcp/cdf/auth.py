@@ -6,10 +6,10 @@ from cognite.client.credentials import (
     Token,
 )
 
-from cognite_cdf_mcp.config import Settings
+from cognite_cdf_mcp.config import ResolvedSettings, Settings
 
 
-def create_credentials(settings: Settings) -> CredentialProvider:
+def create_credentials(settings: Settings | ResolvedSettings) -> CredentialProvider:
     """Build a credential provider based on ``CDF_LOGIN_FLOW``.
 
     Supported:
