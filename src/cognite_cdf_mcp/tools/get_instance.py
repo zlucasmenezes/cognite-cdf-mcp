@@ -9,6 +9,7 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import EdgeId, NodeId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.errors import not_found_instance
 from cognite_cdf_mcp.tools.instances_common import (
     InstanceType,
     optional_view_id,
@@ -55,13 +56,16 @@ def get_instance(
 
         if item is None:
             return json.dumps(
-                {
-                    "error": "NotFound",
-                    "message": (
-                        f"Instance not found: type={instance_type!r}, "
-                        f"space={space!r}, externalId={external_id!r}"
-                    ),
-                }
+                not_found_instance(
+                    client,
+                    space=space,
+                    external_id=external_id,
+                    instance_type=instance_type,
+                    view_space=view_space,
+                    view_external_id=view_external_id,
+                    view_version=view_version,
+                ),
+                indent=2,
             )
 
         return json.dumps({"item": serialize_instance(item)}, indent=2)

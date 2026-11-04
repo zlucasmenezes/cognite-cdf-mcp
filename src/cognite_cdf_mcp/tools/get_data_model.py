@@ -10,6 +10,7 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import DataModelId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.errors import not_found_data_model
 from cognite_cdf_mcp.tools.get_view import _serialize_view_detail
 
 logger = logging.getLogger(__name__)
@@ -67,13 +68,13 @@ def get_data_model(
         )
         if not models:
             return json.dumps(
-                {
-                    "error": "NotFound",
-                    "message": (
-                        f"Data model not found: space={space!r}, "
-                        f"externalId={external_id!r}, version={version!r}"
-                    ),
-                }
+                not_found_data_model(
+                    client,
+                    space=space,
+                    external_id=external_id,
+                    version=version,
+                ),
+                indent=2,
             )
         return json.dumps(
             {

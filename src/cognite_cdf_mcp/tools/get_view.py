@@ -10,6 +10,8 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import ViewId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.errors import not_found_view
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,13 +64,13 @@ def get_view(
         )
         if not views:
             return json.dumps(
-                {
-                    "error": "NotFound",
-                    "message": (
-                        f"View not found: space={space!r}, "
-                        f"externalId={external_id!r}, version={version!r}"
-                    ),
-                }
+                not_found_view(
+                    client,
+                    space=space,
+                    external_id=external_id,
+                    version=version,
+                ),
+                indent=2,
             )
         payload = {"item": _serialize_view_detail(views[0])}
         return json.dumps(payload, indent=2)

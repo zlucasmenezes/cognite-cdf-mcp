@@ -10,6 +10,8 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import ContainerId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.errors import not_found_container
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,24 +28,16 @@ def get_container(
         )
         if container is None:
             return json.dumps(
-                {
-                    "error": "NotFound",
-                    "message": (
-                        f"Container not found: space={space!r}, externalId={external_id!r}"
-                    ),
-                }
+                not_found_container(client, space=space, external_id=external_id),
+                indent=2,
             )
         # retrieve may return a list when multiple ids are used; single id → object
         if hasattr(container, "__iter__") and not hasattr(container, "dump"):
             items = list(container)
             if not items:
                 return json.dumps(
-                    {
-                        "error": "NotFound",
-                        "message": (
-                            f"Container not found: space={space!r}, externalId={external_id!r}"
-                        ),
-                    }
+                    not_found_container(client, space=space, external_id=external_id),
+                    indent=2,
                 )
             container = items[0]
 

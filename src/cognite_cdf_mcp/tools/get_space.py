@@ -9,6 +9,8 @@ from typing import Any
 from cognite.client import CogniteClient
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.errors import not_found_space
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,12 +34,7 @@ def get_space(
     try:
         result = client.data_modeling.spaces.retrieve(spaces=space)
         if result is None:
-            return json.dumps(
-                {
-                    "error": "NotFound",
-                    "message": f"Space not found: space={space!r}",
-                }
-            )
+            return json.dumps(not_found_space(client, space), indent=2)
         # SDK returns Space for a single id, SpaceList for multiple.
         item = result[0] if hasattr(result, "__iter__") and not hasattr(result, "space") else result
         return json.dumps({"item": _serialize_space(item)}, indent=2)
