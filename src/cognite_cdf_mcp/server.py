@@ -371,7 +371,7 @@ def apply_spaces(
 
 @mcp.tool(annotations=WRITE_ANNOTATIONS)
 def delete_spaces(
-    spaces: list[Any] | str,
+    spaces: list[str | dict[str, Any]] | str,
     dry_run: bool = False,
 ) -> str:
     """Delete one or more spaces by id.

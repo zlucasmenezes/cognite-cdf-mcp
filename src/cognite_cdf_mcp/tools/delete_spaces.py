@@ -23,7 +23,7 @@ def _serialize_space(space: Any) -> dict[str, Any]:
     }
 
 
-def _parse_space_ids(spaces: list[Any] | str) -> list[str]:
+def _parse_space_ids(spaces: list[str | dict[str, Any]] | str) -> list[str]:
     """Accept ``["sp_a"]``, ``[{"space": "sp_a"}]``, or a JSON string."""
     if isinstance(spaces, str):
         stripped = spaces.strip()
@@ -35,9 +35,9 @@ def _parse_space_ids(spaces: list[Any] | str) -> list[str]:
         parsed = json.loads(stripped)
         if not isinstance(parsed, list):
             raise TypeError("spaces must be a JSON array or a space id string")
-        items = parsed
+        items: list[Any] = parsed
     else:
-        items = spaces
+        items = list(spaces)
 
     ids: list[str] = []
     for item in items:
@@ -59,7 +59,7 @@ def _parse_space_ids(spaces: list[Any] | str) -> list[str]:
 def delete_spaces(
     client: CogniteClient,
     *,
-    spaces: list[Any] | str,
+    spaces: list[str | dict[str, Any]] | str,
     dry_run: bool = False,
 ) -> str:
     """Delete one or more spaces by id.
@@ -104,7 +104,7 @@ def delete_spaces(
         elif isinstance(deleted, str):
             deleted_list = [deleted]
         elif hasattr(deleted, "space") and not hasattr(deleted, "__iter__"):
-            deleted_list = [getattr(deleted, "space")]
+            deleted_list = [deleted.space]
         else:
             deleted_list = [
                 getattr(item, "space", item) if not isinstance(item, str) else item
