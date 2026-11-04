@@ -2,7 +2,7 @@
 
 [Model Context Protocol](https://modelcontextprotocol.io/) server for [Cognite Data Fusion](https://docs.cognite.com/).
 
-> **Status: early development / experimental.** APIs, tools, and config may change without notice. Not an official Cognite product. Use at your own risk — especially write tools (`apply_*` / `delete_*`). Prefer `dry_run=true` until you trust the behavior. Do not commit secrets (`CDF_TOKEN`); keep them in local `.env` or Cursor MCP `env`.
+> **Status: early development / experimental.** APIs, tools, and config may change without notice. Not an official Cognite product. Use at your own risk — especially write tools (`apply_*` / `delete_*`). Write tools default to `dry_run=true` (preview only); pass `dry_run=false` only when you intend to mutate CDF. Do not commit secrets (`CDF_TOKEN`); keep them in local `.env` or Cursor MCP `env`.
 
 ### Environments (no CDF call)
 
@@ -41,16 +41,16 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 
 | Tool | Description |
 | --- | --- |
-| `apply_instances` | Create/update nodes/edges (`dry_run` supported; dry run only needs `READ`) |
-| `delete_instances` | Delete nodes/edges by ids (`dry_run` supported; dry run only needs `READ`) |
+| `apply_instances` | Create/update nodes/edges (`dry_run=true` by default; dry run only needs `READ`) |
+| `delete_instances` | Delete nodes/edges by ids (`dry_run=true` by default; dry run only needs `READ`) |
 
 ### Schema writes (`dataModelsAcl:WRITE`)
 
 | Tool | Description |
 | --- | --- |
-| `apply_spaces` | Create/update spaces (`dry_run` supported; dry run only needs `READ`) |
-| `delete_spaces` | Delete spaces by id (`dry_run` supported; dry run only needs `READ`) |
-| `delete_view` | Delete one view by space / externalId / version (`dry_run` supported; dry run only needs `READ`) |
+| `apply_spaces` | Create/update spaces (`dry_run=true` by default; dry run only needs `READ`) |
+| `delete_spaces` | Delete spaces by id (`dry_run=true` by default; dry run only needs `READ`) |
+| `delete_view` | Delete one view by space / externalId / version (`dry_run=true` by default; dry run only needs `READ`) |
 
 ## Requirements
 
@@ -260,12 +260,12 @@ Open the Inspector URL, connect, and call the list/get tools for spaces, data mo
 1. `list_environments` to confirm the aliases (`qa`, `prod`) and their projects.
 2. Read from each without switching: `list_views(space="my_space", environment="qa")`, then the same call with `environment="prod"`; compare the results.
 3. Or `use_environment(name="qa")`, work there, then `use_environment(name="prod")` (or `default`).
-4. For writes, run `dry_run=true` with an explicit `environment="prod"` first, check the `environment` / `project` fields in the response, then repeat with `dry_run=false` only when intentional.
+4. For writes, call with an explicit `environment="prod"` first (defaults to dry-run preview), check the `environment` / `project` fields in the response, then repeat with `dry_run=false` only when intentional.
 
 ### Safe dry-run before writing
 
-1. Prefer `dry_run=true` on `apply_instances`, `delete_instances`, `apply_spaces`, `delete_spaces`, or `delete_view`.
-2. Review the JSON preview, then call again with `dry_run=false` only when intentional.
+1. Write tools (`apply_*` / `delete_*`) already default to `dry_run=true` — review the JSON preview first.
+2. Call again with `dry_run=false` only when intentional.
 
 ## Project layout
 
@@ -278,7 +278,7 @@ src/cognite_cdf_mcp/
   cdf/session.py         # active (session) environment
   tools/environments.py  # list_environments / use_environment
   tools/                 # list/get/delete tool implementations
-    params.py            # shared input helpers
+    params.py            # shared input helpers + DEFAULT_DRY_RUN / DEFAULT_LIMIT
     schema_page.py       # cursor pagination for schema lists
     errors.py            # actionable NotFound helpers
 ```
