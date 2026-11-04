@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
+from collections.abc import Callable
 from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from cognite_cdf_mcp.cdf.client import get_cognite_client
+from cognite_cdf_mcp.cdf.client import effective_environment, get_cognite_client
+from cognite_cdf_mcp.config import UnknownEnvironmentError, resolve_environment
+from cognite_cdf_mcp.tools import environments as _environments
 from cognite_cdf_mcp.tools.aggregate_instances import (
     aggregate_instances as _aggregate_instances,
 )
@@ -64,6 +68,64 @@ UPSERT_ANNOTATIONS = ToolAnnotations(
 )
 
 
+def _call(environment: str | None, fn: Callable[..., str], /, **kwargs: Any) -> str:
+    """Run a tool implementation against the resolved environment's client.
+
+    ``environment`` overrides the session default. Unknown aliases / bad config come
+    back as a JSON error. JSON-object results get ``environment`` and ``project`` added.
+    """
+    try:
+        env_name = effective_environment(environment)
+        project = resolve_environment(env_name).cdf_project
+        client = get_cognite_client(environment)
+    except UnknownEnvironmentError as exc:
+        return json.dumps(_environments.unknown_environment_error(exc), indent=2)
+    except ValueError as exc:
+        return json.dumps({"error": "InvalidEnvironment", "message": str(exc)}, indent=2)
+
+    result = fn(client, **kwargs)
+    try:
+        payload = json.loads(result)
+    except (TypeError, ValueError):
+        return result
+    if isinstance(payload, dict):
+        payload = {"environment": env_name, "project": project, **payload}
+        return json.dumps(payload, indent=2)
+    return result
+
+
+# --- Environments ----------------------------------------------------------
+
+
+@mcp.tool(title="List environments", annotations=READ_ANNOTATIONS)
+def list_environments() -> str:
+    """List configured CDF environments (default + CDF_PROJECT_<ALIAS> aliases).
+
+    Shows project/cluster per alias and which one is active for this session.
+    Tokens are never returned. Does not call CDF.
+    """
+    return _environments.list_environments()
+
+
+@mcp.tool(
+    title="Use environment",
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    ),
+)
+def use_environment(name: str) -> str:
+    """Set the session default environment for all CDF tools (e.g. dev, qa, prod, default).
+
+    Any tool can still override per call with its `environment` argument.
+    Pagination cursors are project-scoped: re-query after switching.
+    Does not call CDF.
+    """
+    return _environments.use_environment(name)
+
+
 # --- Reads -----------------------------------------------------------------
 
 
@@ -74,15 +136,19 @@ def list_data_models(
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
+    environment: str | None = None,
 ) -> str:
     """List data models in the CDF project (lean metadata + view refs).
 
     Requires dataModelsAcl:READ. Default limit is 100.
     Returns nextCursor when more pages are available.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _list_data_models(
-        client,
+    return _call(
+        environment,
+        _list_data_models,
         space=space,
         all_versions=all_versions,
         include_global=include_global,
@@ -97,16 +163,20 @@ def get_data_model(
     external_id: str,
     version: str,
     inline_views: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Retrieve a specific data model by space, externalId, and version.
 
     Requires dataModelsAcl:READ.
     inline_views=false: views as refs (space/externalId/version).
     inline_views=true: each view expanded with properties and implements.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _get_data_model(
-        client,
+    return _call(
+        environment,
+        _get_data_model,
         space=space,
         external_id=external_id,
         version=version,
@@ -119,15 +189,19 @@ def list_spaces(
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
+    environment: str | None = None,
 ) -> str:
     """List spaces in the CDF project.
 
     Requires dataModelsAcl:READ. Default limit is 100.
     Returns nextCursor when more pages are available.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _list_spaces(
-        client,
+    return _call(
+        environment,
+        _list_spaces,
         include_global=include_global,
         limit=limit,
         cursor=cursor,
@@ -135,13 +209,15 @@ def list_spaces(
 
 
 @mcp.tool(title="Get space", annotations=READ_ANNOTATIONS)
-def get_space(space: str) -> str:
+def get_space(space: str, environment: str | None = None) -> str:
     """Retrieve a specific space by id.
 
     Requires dataModelsAcl:READ.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _get_space(client, space=space)
+    return _call(environment, _get_space, space=space)
 
 
 @mcp.tool(title="List views", annotations=READ_ANNOTATIONS)
@@ -151,15 +227,19 @@ def list_views(
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
+    environment: str | None = None,
 ) -> str:
     """List views in the CDF project (lean metadata, no full property dump).
 
     Requires dataModelsAcl:READ. Prefer filtering by space for large projects.
     Default limit is 100. Returns nextCursor when more pages are available.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _list_views(
-        client,
+    return _call(
+        environment,
+        _list_views,
         space=space,
         all_versions=all_versions,
         include_global=include_global,
@@ -174,14 +254,18 @@ def get_view(
     external_id: str,
     version: str,
     include_inherited_properties: bool = True,
+    environment: str | None = None,
 ) -> str:
     """Retrieve a specific view by space, externalId, and version.
 
     Requires dataModelsAcl:READ. Returns view metadata and property definitions.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _get_view(
-        client,
+    return _call(
+        environment,
+        _get_view,
         space=space,
         external_id=external_id,
         version=version,
@@ -195,15 +279,19 @@ def list_containers(
     include_global: bool = False,
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
+    environment: str | None = None,
 ) -> str:
     """List containers in the CDF project (lean metadata).
 
     Requires dataModelsAcl:READ. Default limit is 100.
     Returns nextCursor when more pages are available.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _list_containers(
-        client,
+    return _call(
+        environment,
+        _list_containers,
         space=space,
         include_global=include_global,
         limit=limit,
@@ -215,13 +303,16 @@ def list_containers(
 def get_container(
     space: str,
     external_id: str,
+    environment: str | None = None,
 ) -> str:
     """Retrieve one container by space and externalId.
 
     Requires dataModelsAcl:READ.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _get_container(client, space=space, external_id=external_id)
+    return _call(environment, _get_container, space=space, external_id=external_id)
 
 
 @mcp.tool(title="Filter DSL docs", annotations=READ_ANNOTATIONS)
@@ -243,16 +334,20 @@ def get_instance(
     view_external_id: str | None = None,
     view_version: str | None = None,
     include_typing: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Retrieve one instance (node or edge) by space and externalId.
 
     Requires dataModelInstancesAcl:READ.
     Optionally set view_space / view_external_id / view_version together to
     project properties through that view.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _get_instance(
-        client,
+    return _call(
+        environment,
+        _get_instance,
         space=space,
         external_id=external_id,
         instance_type=instance_type,
@@ -269,15 +364,19 @@ def inspect_instance(
     external_id: str,
     instance_type: Literal["node", "edge"] = "node",
     all_versions: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Inspect which views and containers an instance is involved in.
 
     Requires dataModelInstancesAcl:READ. Useful when get_instance returns empty
     properties or you need to discover the right view projection.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _inspect_instance(
-        client,
+    return _call(
+        environment,
+        _inspect_instance,
         space=space,
         external_id=external_id,
         instance_type=instance_type,
@@ -296,16 +395,20 @@ def query_instances(
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
     include_typing: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Query instances through a view, with optional space, CDF filter, and cursor.
 
     Requires dataModelInstancesAcl:READ. Default limit is 100.
     Returns nextCursor when more pages are available.
     Call get_filter_docs for filter examples.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _query_instances(
-        client,
+    return _call(
+        environment,
+        _query_instances,
         view_space=view_space,
         view_external_id=view_external_id,
         view_version=view_version,
@@ -330,14 +433,18 @@ def search_instances(
     filter: dict[str, Any] | str | None = None,
     limit: int = DEFAULT_LIMIT,
     include_typing: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Full-text search instances through a view (name, aliases, etc.).
 
     Requires dataModelInstancesAcl:READ. Default limit is 100.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _search_instances(
-        client,
+    return _call(
+        environment,
+        _search_instances,
         view_space=view_space,
         view_external_id=view_external_id,
         view_version=view_version,
@@ -363,15 +470,19 @@ def aggregate_instances(
     query: str | None = None,
     filter: dict[str, Any] | str | None = None,
     limit: int = DEFAULT_LIMIT,
+    environment: str | None = None,
 ) -> str:
     """Aggregate instances (count/sum/avg/min/max) through a view.
 
     Requires dataModelInstancesAcl:READ.
     aggregates example: {"count": {"property": "externalId"}}
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _aggregate_instances(
-        client,
+    return _call(
+        environment,
+        _aggregate_instances,
         view_space=view_space,
         view_external_id=view_external_id,
         view_version=view_version,
@@ -392,30 +503,36 @@ def aggregate_instances(
 def apply_spaces(
     spaces: list[dict[str, Any]] | str,
     dry_run: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Create or update spaces (upsert).
 
     Requires dataModelsAcl:WRITE for an actual apply.
     dry_run=true validates payloads and reports existing spaces (no write).
     spaces example: [{"space": "sp_x", "name": "Sandbox", "description": "..."}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _apply_spaces(client, spaces=spaces, dry_run=dry_run)
+    return _call(environment, _apply_spaces, spaces=spaces, dry_run=dry_run)
 
 
 @mcp.tool(title="Delete spaces", annotations=WRITE_ANNOTATIONS)
 def delete_spaces(
     spaces: list[str | dict[str, Any]] | str,
     dry_run: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Delete one or more spaces by id.
 
     Requires dataModelsAcl:WRITE for an actual delete.
     dry_run=true retrieves matching spaces only (no delete).
     spaces example: ["sp_x"] or [{"space": "sp_x"}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _delete_spaces(client, spaces=spaces, dry_run=dry_run)
+    return _call(environment, _delete_spaces, spaces=spaces, dry_run=dry_run)
 
 
 @mcp.tool(title="Apply instances", annotations=UPSERT_ANNOTATIONS)
@@ -425,15 +542,19 @@ def apply_instances(
     replace: bool = False,
     auto_create_direct_relations: bool = True,
     dry_run: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Create or update instances (upsert nodes/edges).
 
     Requires dataModelInstancesAcl:WRITE for an actual apply.
     dry_run=true validates payloads and reports existing instances (no write).
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _apply_instances(
-        client,
+    return _call(
+        environment,
+        _apply_instances,
         nodes=nodes,
         edges=edges,
         replace=replace,
@@ -447,16 +568,20 @@ def delete_instances(
     items: list[dict[str, Any]] | str,
     instance_type: Literal["node", "edge"] = "node",
     dry_run: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Delete one or more instances by space/externalId.
 
     Requires dataModelInstancesAcl:WRITE for an actual delete.
     dry_run=true retrieves matching instances only (no delete).
     items example: [{"space": "sp_x", "externalId": "MCH-1"}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _delete_instances(
-        client,
+    return _call(
+        environment,
+        _delete_instances,
         items=items,
         instance_type=instance_type,
         dry_run=dry_run,
@@ -469,6 +594,7 @@ def delete_view(
     external_id: str,
     version: str,
     dry_run: bool = False,
+    environment: str | None = None,
 ) -> str:
     """Delete a specific view by space, externalId, and version.
 
@@ -476,10 +602,13 @@ def delete_view(
     dry_run=true: only checks that the view exists and reports what would be
     deleted (no write; dependency conflicts are not validated).
     dry_run=false: permanently removes the view version from the project.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
     """
-    client = get_cognite_client()
-    return _delete_view(
-        client,
+    return _call(
+        environment,
+        _delete_view,
         space=space,
         external_id=external_id,
         version=version,
