@@ -2,21 +2,42 @@
 
 [Model Context Protocol](https://modelcontextprotocol.io/) server for [Cognite Data Fusion](https://docs.cognite.com/).
 
-### Reads (`dataModelsAcl:READ`)
+### Schema reads (`dataModelsAcl:READ`)
 
 | Tool | Description |
 | --- | --- |
-| `list_data_models` | List data models (lean metadata + view refs) |
+| `list_data_models` | List data models (lean metadata + view refs; default `limit=100`) |
 | `get_data_model` | Retrieve one data model by space / externalId / version |
-| `list_spaces` | List spaces |
+| `list_spaces` | List spaces (default `limit=100`) |
 | `get_space` | Retrieve one space by id |
-| `list_views` | List views (lean metadata, no full property dump) |
+| `list_views` | List views (lean metadata, no full property dump; default `limit=100`) |
 | `get_view` | Retrieve one view by space / externalId / version |
+| `list_containers` | List containers (lean metadata; default `limit=100`) |
+| `get_container` | Retrieve one container by space / externalId |
+| `get_filter_docs` | Filter DSL examples and property-path tips for instance queries |
 
-### Writes (`dataModelsAcl:WRITE`)
+### Instance reads (`dataModelInstancesAcl:READ`)
 
 | Tool | Description |
 | --- | --- |
+| `get_instance` | Retrieve one node/edge by space / externalId (optional view projection) |
+| `query_instances` | Query instances through a view (`filter`, `instance_space`, `cursor`; default `limit=100`) |
+| `search_instances` | Full-text search through a view (default `limit=100`) |
+| `aggregate_instances` | Count/sum/avg/min/max through a view |
+
+### Instance writes (`dataModelInstancesAcl:WRITE`)
+
+| Tool | Description |
+| --- | --- |
+| `apply_instances` | Create/update nodes/edges (`dry_run` supported; dry run only needs `READ`) |
+| `delete_instances` | Delete nodes/edges by ids (`dry_run` supported; dry run only needs `READ`) |
+
+### Schema writes (`dataModelsAcl:WRITE`)
+
+| Tool | Description |
+| --- | --- |
+| `apply_spaces` | Create/update spaces (`dry_run` supported; dry run only needs `READ`) |
+| `delete_spaces` | Delete spaces by id (`dry_run` supported; dry run only needs `READ`) |
 | `delete_view` | Delete one view by space / externalId / version (`dry_run` supported; dry run only needs `READ`) |
 
 ## Requirements
