@@ -1,8 +1,9 @@
 [project]
 name = "cognite-cdf-mcp"
 version = "0.1.0"
-description = "MCP server for Cognite Data Fusion"
+description = "MCP server for Cognite Data Fusion (experimental)"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "cognite-sdk>=7.0.0",
