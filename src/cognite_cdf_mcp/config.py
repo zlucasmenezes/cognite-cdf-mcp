@@ -7,15 +7,13 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal, Self
+from typing import Self
 
 from dotenv import dotenv_values
 from pydantic import Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
-
-LoginFlow = Literal["client_credentials", "token"]
 
 DEFAULT_ENVIRONMENT = "default"
 PROJECT_ALIAS_PREFIX = "CDF_PROJECT_"
@@ -38,7 +36,7 @@ class UnknownEnvironmentError(ValueError):
 
 
 class Settings(BaseSettings):
-    """CDF and IdP settings for the MCP server (the ``default`` profile)."""
+    """CDF settings for the MCP server (the ``default`` profile)."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -48,52 +46,18 @@ class Settings(BaseSettings):
 
     cdf_project: str = Field(..., description="CDF project name")
     cdf_cluster: str = Field(..., description="CDF cluster, e.g. westeurope-1")
-    cdf_login_flow: LoginFlow = Field(
-        default="client_credentials",
-        description="Auth flow: client_credentials or token",
-    )
-
-    # client_credentials
-    idp_tenant_id: str | None = Field(default=None, description="Microsoft Entra ID tenant ID")
-    idp_client_id: str | None = Field(default=None, description="OAuth client ID")
-    idp_client_secret: str | None = Field(default=None, description="OAuth client secret")
-
-    # token
-    cdf_token: str | None = Field(default=None, description="Bearer access token for CDF")
+    cdf_token: str = Field(..., description="Bearer access token for CDF")
 
     @model_validator(mode="after")
     def validate_auth_fields(self) -> Self:
-        if self.cdf_login_flow == "client_credentials":
-            missing = [
-                name
-                for name, value in (
-                    ("IDP_TENANT_ID", self.idp_tenant_id),
-                    ("IDP_CLIENT_ID", self.idp_client_id),
-                    ("IDP_CLIENT_SECRET", self.idp_client_secret),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError("client_credentials flow requires: " + ", ".join(missing))
-        elif self.cdf_login_flow == "token":
-            if not self.cdf_token:
-                raise ValueError("token flow requires: CDF_TOKEN")
+        if not self.cdf_token.strip():
+            raise ValueError("CDF_TOKEN is required")
         return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def base_url(self) -> str:
         return f"https://{self.cdf_cluster}.cognitedata.com"
-
-    @property
-    def token_url(self) -> str:
-        if not self.idp_tenant_id:
-            raise ValueError("IDP_TENANT_ID is required to build token_url")
-        return f"https://login.microsoftonline.com/{self.idp_tenant_id}/oauth2/v2.0/token"
-
-    @property
-    def scopes(self) -> list[str]:
-        return [f"{self.base_url}/.default"]
 
 
 @lru_cache
@@ -123,33 +87,16 @@ class ResolvedSettings:
     environment: str
     cdf_project: str
     cdf_cluster: str
-    cdf_login_flow: LoginFlow
-    idp_tenant_id: str | None = None
-    idp_client_id: str | None = None
-    idp_client_secret: str | None = None
-    cdf_token: str | None = None
+    cdf_token: str
 
     @property
     def base_url(self) -> str:
         return f"https://{self.cdf_cluster}.cognitedata.com"
 
     @property
-    def token_url(self) -> str:
-        if not self.idp_tenant_id:
-            raise ValueError("IDP_TENANT_ID is required to build token_url")
-        return f"https://login.microsoftonline.com/{self.idp_tenant_id}/oauth2/v2.0/token"
-
-    @property
-    def scopes(self) -> list[str]:
-        return [f"{self.base_url}/.default"]
-
-    @property
-    def client_cache_key(self) -> tuple[str, str, str, str]:
-        """Identity of the underlying client (project, cluster, flow, credential id)."""
-        credential = (
-            self.cdf_token or "" if self.cdf_login_flow == "token" else self.idp_client_id or ""
-        )
-        return (self.cdf_project, self.cdf_cluster, self.cdf_login_flow, credential)
+    def client_cache_key(self) -> tuple[str, str, str]:
+        """Identity of the underlying client (project, cluster, token)."""
+        return (self.cdf_project, self.cdf_cluster, self.cdf_token)
 
 
 def normalize_environment_name(name: str | None) -> str:
@@ -219,7 +166,7 @@ def resolve_environment(
     """Merge an alias over the base settings.
 
     ``None``/``"default"`` returns the base ``CDF_PROJECT`` profile. Cluster and
-    token fall back to the base values; client_credentials stay global.
+    token fall back to the base values.
     Does not touch the network.
     """
     cfg = base or get_settings()
@@ -230,10 +177,6 @@ def resolve_environment(
             environment=DEFAULT_ENVIRONMENT,
             cdf_project=cfg.cdf_project,
             cdf_cluster=cfg.cdf_cluster,
-            cdf_login_flow=cfg.cdf_login_flow,
-            idp_tenant_id=cfg.idp_tenant_id,
-            idp_client_id=cfg.idp_client_id,
-            idp_client_secret=cfg.idp_client_secret,
             cdf_token=cfg.cdf_token,
         )
 
@@ -242,8 +185,8 @@ def resolve_environment(
     if override is None:
         raise UnknownEnvironmentError(alias, [DEFAULT_ENVIRONMENT, *sorted(aliases)])
 
-    token = override.token or cfg.cdf_token
-    if cfg.cdf_login_flow == "token" and not token:
+    token = (override.token or cfg.cdf_token).strip()
+    if not token:
         raise ValueError(
             f"Environment {alias!r} needs a token: set CDF_TOKEN_{alias.upper()} or CDF_TOKEN"
         )
@@ -252,9 +195,5 @@ def resolve_environment(
         environment=alias,
         cdf_project=override.project,
         cdf_cluster=override.cluster or cfg.cdf_cluster,
-        cdf_login_flow=cfg.cdf_login_flow,
-        idp_tenant_id=cfg.idp_tenant_id,
-        idp_client_id=cfg.idp_client_id,
-        idp_client_secret=cfg.idp_client_secret,
         cdf_token=token,
     )

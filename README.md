@@ -54,7 +54,7 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/)
-- Access to a CDF project via **client credentials** or a short-lived **bearer token**
+- Access to a CDF project via a short-lived **bearer token** (`CDF_TOKEN`)
 
 ## Setup
 
@@ -73,26 +73,11 @@ Always required:
 | --- | --- |
 | `CDF_PROJECT` | CDF project name |
 | `CDF_CLUSTER` | Cluster id, e.g. `westeurope-1` |
-| `CDF_LOGIN_FLOW` | `client_credentials` (default) or `token` |
-
-**`client_credentials`:**
-
-| Variable | Description |
-| --- | --- |
-| `IDP_TENANT_ID` | Microsoft Entra ID tenant |
-| `IDP_CLIENT_ID` | OAuth client id |
-| `IDP_CLIENT_SECRET` | OAuth client secret |
-
-**`token`:**
-
-| Variable | Description |
-| --- | --- |
 | `CDF_TOKEN` | Bearer access token for CDF |
 
-Example for token auth:
+Example:
 
 ```bash
-CDF_LOGIN_FLOW=token
 CDF_PROJECT=your-project
 CDF_CLUSTER=westeurope-1
 CDF_TOKEN=eyJ...
@@ -100,7 +85,7 @@ CDF_TOKEN=eyJ...
 
 ### Multiple environments (dev / qa / prod)
 
-The base `CDF_PROJECT` / `CDF_CLUSTER` / `CDF_TOKEN` (or client credentials) is the built-in **`default`** environment. The process starts on `default`; there is no `CDF_DEFAULT_ENVIRONMENT`.
+The base `CDF_PROJECT` / `CDF_CLUSTER` / `CDF_TOKEN` is the built-in **`default`** environment. The process starts on `default`; there is no `CDF_DEFAULT_ENVIRONMENT`.
 
 Add more with flat variables. An alias exists iff `CDF_PROJECT_<ALIAS>` is set and non-empty (the suffix is case-insensitive and normalized to lowercase; `default` is reserved):
 
@@ -108,12 +93,11 @@ Add more with flat variables. An alias exists iff `CDF_PROJECT_<ALIAS>` is set a
 | --- | --- |
 | `CDF_PROJECT_<ALIAS>` | Project for that alias (required to define it) |
 | `CDF_CLUSTER_<ALIAS>` | Optional; falls back to `CDF_CLUSTER` |
-| `CDF_TOKEN_<ALIAS>` | Optional; falls back to `CDF_TOKEN` (token flow only) |
+| `CDF_TOKEN_<ALIAS>` | Optional; falls back to `CDF_TOKEN` |
 
-`client_credentials` (`IDP_*`) stay global: every alias reuses them. Aliases are also read from `.env`; real process env vars win.
+Aliases are also read from `.env`; real process env vars win.
 
 ```bash
-CDF_LOGIN_FLOW=token
 CDF_PROJECT=bdx-dev
 CDF_CLUSTER=az-phx-001
 CDF_TOKEN=eyJ...
@@ -144,7 +128,7 @@ Logs go to **stderr** (stdout is reserved for MCP JSON-RPC).
 
 ## Cursor MCP config
 
-### Client credentials
+### Single project
 
 ```json
 {
@@ -153,28 +137,6 @@ Logs go to **stderr** (stdout is reserved for MCP JSON-RPC).
       "command": "uv",
       "args": ["--directory", "/absolute/path/to/cognite-cdf-mcp", "run", "cognite-cdf-mcp"],
       "env": {
-        "CDF_LOGIN_FLOW": "client_credentials",
-        "CDF_PROJECT": "your-project",
-        "CDF_CLUSTER": "westeurope-1",
-        "IDP_TENANT_ID": "00000000-0000-0000-0000-000000000000",
-        "IDP_CLIENT_ID": "your-client-id",
-        "IDP_CLIENT_SECRET": "your-client-secret"
-      }
-    }
-  }
-}
-```
-
-### Token
-
-```json
-{
-  "mcpServers": {
-    "cognite-cdf": {
-      "command": "uv",
-      "args": ["--directory", "/absolute/path/to/cognite-cdf-mcp", "run", "cognite-cdf-mcp"],
-      "env": {
-        "CDF_LOGIN_FLOW": "token",
         "CDF_PROJECT": "your-project",
         "CDF_CLUSTER": "westeurope-1",
         "CDF_TOKEN": "eyJ..."
@@ -184,7 +146,7 @@ Logs go to **stderr** (stdout is reserved for MCP JSON-RPC).
 }
 ```
 
-### Token, multiple environments
+### Multiple environments
 
 One token shared by all projects (add `CDF_TOKEN_<ALIAS>` only where it differs):
 
@@ -195,7 +157,6 @@ One token shared by all projects (add `CDF_TOKEN_<ALIAS>` only where it differs)
       "command": "uv",
       "args": ["--directory", "/absolute/path/to/cognite-cdf-mcp", "run", "cognite-cdf-mcp"],
       "env": {
-        "CDF_LOGIN_FLOW": "token",
         "CDF_PROJECT": "bdx-dev",
         "CDF_CLUSTER": "az-phx-001",
         "CDF_TOKEN": "eyJ...",

@@ -10,12 +10,12 @@ from cognite_cdf_mcp.cdf.auth import create_credentials
 from cognite_cdf_mcp.cdf.session import get_active_environment
 from cognite_cdf_mcp.config import ResolvedSettings, Settings, resolve_environment
 
-_clients: dict[tuple[str, str, str, str], CogniteClient] = {}
+_clients: dict[tuple[str, str, str], CogniteClient] = {}
 _clients_lock = threading.Lock()
 
 
 def create_cognite_client(settings: Settings | ResolvedSettings | None = None) -> CogniteClient:
-    """Create a CogniteClient using the configured auth flow (no network calls)."""
+    """Create a CogniteClient using the configured bearer token (no network calls)."""
     cfg = settings or resolve_environment(None)
     credentials = create_credentials(cfg)
     return CogniteClient(

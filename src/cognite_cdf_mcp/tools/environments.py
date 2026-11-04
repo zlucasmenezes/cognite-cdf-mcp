@@ -21,7 +21,6 @@ def _describe(cfg: ResolvedSettings, *, active: str) -> dict[str, Any]:
         "name": cfg.environment,
         "project": cfg.cdf_project,
         "cluster": cfg.cdf_cluster,
-        "loginFlow": cfg.cdf_login_flow,
         "active": cfg.environment == active,
     }
 
