@@ -2,6 +2,15 @@
 
 [Model Context Protocol](https://modelcontextprotocol.io/) server for [Cognite Data Fusion](https://docs.cognite.com/).
 
+### Environments (no CDF call)
+
+| Tool | Description |
+| --- | --- |
+| `list_environments` | List `default` + every `CDF_PROJECT_<ALIAS>` environment (project/cluster, active flag; tokens never shown) |
+| `use_environment` | Set the session default environment (`default`, `dev`, `qa`, …) |
+
+Every CDF tool below also accepts an optional `environment` argument that overrides the session default for that call. Responses that are JSON objects include `environment` and `project`.
+
 ### Schema reads (`dataModelsAcl:READ`)
 
 | Tool | Description |
@@ -89,6 +98,40 @@ CDF_CLUSTER=westeurope-1
 CDF_TOKEN=eyJ...
 ```
 
+### Multiple environments (dev / qa / prod)
+
+The base `CDF_PROJECT` / `CDF_CLUSTER` / `CDF_TOKEN` (or client credentials) is the built-in **`default`** environment. The process starts on `default`; there is no `CDF_DEFAULT_ENVIRONMENT`.
+
+Add more with flat variables. An alias exists iff `CDF_PROJECT_<ALIAS>` is set and non-empty (the suffix is case-insensitive and normalized to lowercase; `default` is reserved):
+
+| Variable | Description |
+| --- | --- |
+| `CDF_PROJECT_<ALIAS>` | Project for that alias (required to define it) |
+| `CDF_CLUSTER_<ALIAS>` | Optional; falls back to `CDF_CLUSTER` |
+| `CDF_TOKEN_<ALIAS>` | Optional; falls back to `CDF_TOKEN` (token flow only) |
+
+`client_credentials` (`IDP_*`) stay global: every alias reuses them. Aliases are also read from `.env`; real process env vars win.
+
+```bash
+CDF_LOGIN_FLOW=token
+CDF_PROJECT=bdx-dev
+CDF_CLUSTER=az-phx-001
+CDF_TOKEN=eyJ...
+
+CDF_PROJECT_DEV=bdx-dev
+CDF_PROJECT_QA=bdx-preprod
+CDF_PROJECT_PROD=bdx-prod
+# CDF_CLUSTER_PROD=other-cluster
+# CDF_TOKEN_PROD=eyJ-only-if-different
+```
+
+Selecting an environment:
+
+- `use_environment(name="qa")` sets the session default for all following tool calls.
+- Any tool call can pass `environment="prod"` to override once, without changing the session default.
+- Unknown aliases return a JSON `UnknownEnvironment` error listing the available names.
+- Pagination cursors are project-scoped: re-query after switching instead of reusing `nextCursor`.
+
 ## Run locally
 
 ```bash
@@ -135,6 +178,30 @@ Logs go to **stderr** (stdout is reserved for MCP JSON-RPC).
         "CDF_PROJECT": "your-project",
         "CDF_CLUSTER": "westeurope-1",
         "CDF_TOKEN": "eyJ..."
+      }
+    }
+  }
+}
+```
+
+### Token, multiple environments
+
+One token shared by all projects (add `CDF_TOKEN_<ALIAS>` only where it differs):
+
+```json
+{
+  "mcpServers": {
+    "cognite-cdf": {
+      "command": "uv",
+      "args": ["--directory", "/absolute/path/to/cognite-cdf-mcp", "run", "cognite-cdf-mcp"],
+      "env": {
+        "CDF_LOGIN_FLOW": "token",
+        "CDF_PROJECT": "bdx-dev",
+        "CDF_CLUSTER": "az-phx-001",
+        "CDF_TOKEN": "eyJ...",
+        "CDF_PROJECT_DEV": "bdx-dev",
+        "CDF_PROJECT_QA": "bdx-preprod",
+        "CDF_PROJECT_PROD": "bdx-prod"
       }
     }
   }
@@ -197,6 +264,13 @@ Open the Inspector URL, connect, and call the list/get tools for spaces, data mo
 1. `get_filter_docs` if you need filter syntax.
 2. `aggregate_instances` with e.g. `aggregates={"count":{"property":"externalId"}}`, plus `instance_space` and/or `filter`.
 
+### Compare / act across QA and prod
+
+1. `list_environments` to confirm the aliases (`qa`, `prod`) and their projects.
+2. Read from each without switching: `list_views(space="my_space", environment="qa")`, then the same call with `environment="prod"`; compare the results.
+3. Or `use_environment(name="qa")`, work there, then `use_environment(name="prod")` (or `default`).
+4. For writes, run `dry_run=true` with an explicit `environment="prod"` first, check the `environment` / `project` fields in the response, then repeat with `dry_run=false` only when intentional.
+
 ### Safe dry-run before writing
 
 1. Prefer `dry_run=true` on `apply_instances`, `delete_instances`, `apply_spaces`, `delete_spaces`, or `delete_view`.
@@ -207,9 +281,11 @@ Open the Inspector URL, connect, and call the list/get tools for spaces, data mo
 ```
 src/cognite_cdf_mcp/
   server.py              # MCPServer + tool registration
-  config.py              # pydantic-settings
+  config.py              # pydantic-settings + CDF_PROJECT_<ALIAS> discovery / resolve_environment
   cdf/auth.py            # credential providers
-  cdf/client.py          # CogniteClient factory
+  cdf/client.py          # CogniteClient factory + per-project client cache
+  cdf/session.py         # active (session) environment
+  tools/environments.py  # list_environments / use_environment
   tools/                 # list/get/delete tool implementations
     params.py            # shared input helpers
     schema_page.py       # cursor pagination for schema lists
