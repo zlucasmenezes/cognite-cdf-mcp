@@ -67,6 +67,14 @@ UPSERT_ANNOTATIONS = ToolAnnotations(
     idempotentHint=False,
     openWorldHint=True,
 )
+# Local session helpers (no CDF / network). Treated as read-only so hosts that
+# disable write tools still allow environment listing and switching for queries.
+SESSION_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
 
 
 def _call(environment: str | None, fn: Callable[..., str], /, **kwargs: Any) -> str:
@@ -98,7 +106,7 @@ def _call(environment: str | None, fn: Callable[..., str], /, **kwargs: Any) -> 
 # --- Environments ----------------------------------------------------------
 
 
-@mcp.tool(title="List environments", annotations=READ_ANNOTATIONS)
+@mcp.tool(title="List environments", annotations=SESSION_ANNOTATIONS)
 def list_environments() -> str:
     """List configured CDF environments (default + CDF_PROJECT_<ALIAS> aliases).
 
@@ -108,21 +116,13 @@ def list_environments() -> str:
     return _environments.list_environments()
 
 
-@mcp.tool(
-    title="Use environment",
-    annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
-    ),
-)
+@mcp.tool(title="Use environment", annotations=SESSION_ANNOTATIONS)
 def use_environment(name: str) -> str:
     """Set the session default environment for all CDF tools (e.g. dev, qa, prod, default).
 
     Any tool can still override per call with its `environment` argument.
     Pagination cursors are project-scoped: re-query after switching.
-    Does not call CDF.
+    Does not call CDF (session-only; safe with write tools disabled).
     """
     return _environments.use_environment(name)
 
