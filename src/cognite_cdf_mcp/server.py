@@ -11,6 +11,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
+from cognite_cdf_mcp import __version__
 from cognite_cdf_mcp.cdf.client import effective_environment, get_cognite_client
 from cognite_cdf_mcp.config import UnknownEnvironmentError, resolve_environment
 from cognite_cdf_mcp.tools import environments as _environments
@@ -45,7 +46,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cognite_cdf_mcp")
 
-mcp = MCPServer("cognite-cdf-mcp", version="0.1.0")
+mcp = MCPServer("cognite-cdf-mcp", version=__version__)
 
 READ_ANNOTATIONS = ToolAnnotations(
     readOnlyHint=True,
