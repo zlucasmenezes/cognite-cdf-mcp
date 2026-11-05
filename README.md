@@ -197,6 +197,12 @@ You can omit `env` if the process inherits a loaded `.env` via your shell, but p
 
 Pin a version with `@v0.1.0` (or another tag) on the git URL when you publish releases.
 
+## Contributing
+
+Trunk-based: short PRs into `main`, Conventional Commit titles, squash merge.
+Releases are cut via [Release Please](https://github.com/googleapis/release-please) (merge the Release PR to tag).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full flow and **GitHub settings that must be configured in the UI** (branch protection, default squash, etc.).
+
 ## Lint / format / test
 
 ```bash
