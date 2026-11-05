@@ -19,6 +19,15 @@ def test_server_imports_and_registers_core_tools() -> None:
     assert "environment" not in tools["get_filter_docs"].parameters.get("properties", {})
     assert "environment" not in tools["list_environments"].parameters.get("properties", {})
 
+    # Session helpers are closed-world and readOnly so write-gated hosts still
+    # allow env switching for query workflows.
+    for name in ("list_environments", "use_environment"):
+        ann = tools[name].annotations
+        assert ann.read_only_hint is True, name
+        assert ann.open_world_hint is False, name
+        assert ann.destructive_hint is False, name
+    assert tools["query_instances"].annotations.open_world_hint is True
+
     # Write tools share DEFAULT_DRY_RUN (experimental safety switch).
     for name in (
         "apply_spaces",
