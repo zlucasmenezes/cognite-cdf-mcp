@@ -1,4 +1,4 @@
-"""Unit tests: token access summary."""
+"""Unit tests: token access summary and write dry-run denial."""
 
 from __future__ import annotations
 
@@ -8,7 +8,12 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+from cognite.client.exceptions import CogniteAPIError
+
 from cognite_cdf_mcp.tools.access import get_access
+from cognite_cdf_mcp.tools.apply_instances import apply_instances
+from cognite_cdf_mcp.tools.apply_spaces import apply_spaces
+from cognite_cdf_mcp.tools.delete_instances import delete_instances
 
 
 def _cap(
@@ -137,3 +142,119 @@ def test_get_access_includes_non_modeling_capabilities() -> None:
     assert "WRITE" not in out["agentsAcl"]
     assert out["assetsAcl"]["READ"]["scope"] == [{"datasetScope": {"ids": [10]}}]
     assert out["assetsAcl"]["READ"]["spaces"] == []
+
+
+def test_apply_instances_dry_run_denies_missing_write() -> None:
+    client = _client(
+        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_shf_fra_dat"], projects=["bdx-preprod"])
+    )
+    client.data_modeling.instances.retrieve_nodes.return_value = []
+    out = json.loads(
+        apply_instances(
+            client,
+            nodes=[
+                {
+                    "space": "sp_shf_fra_dat",
+                    "externalId": "SFT-Central-CEN",
+                    "viewSpace": "sp_shf_glb_dmd",
+                    "viewExternalId": "Shift",
+                    "viewVersion": "v1.0.0",
+                    "properties": {"name": "Central"},
+                }
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["dryRun"] is True
+    assert out["wouldApply"] is False
+    assert out["access"]["allowed"] is False
+    assert out["access"]["missingSpaces"] == ["sp_shf_fra_dat"]
+    assert "WRITE" in out["message"]
+    assert client.data_modeling.instances.apply.call_count == 0
+
+
+def test_apply_instances_dry_run_allows_write() -> None:
+    client = _client(
+        _cap(
+            "dataModelInstancesAcl",
+            ["READ", "WRITE"],
+            spaces=["sp_shf_fra_dat"],
+            projects=["bdx-preprod"],
+        )
+    )
+    client.data_modeling.instances.retrieve_nodes.return_value = []
+    out = json.loads(
+        apply_instances(
+            client,
+            nodes=[
+                {
+                    "space": "sp_shf_fra_dat",
+                    "externalId": "SFT-Central-CEN",
+                    "viewSpace": "sp_shf_glb_dmd",
+                    "viewExternalId": "Shift",
+                    "viewVersion": "v1.0.0",
+                    "properties": {"name": "Central"},
+                }
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["wouldApply"] is True
+    assert out["access"]["allowed"] is True
+    assert out["access"]["missingSpaces"] == []
+
+
+def test_apply_instances_403_includes_access() -> None:
+    client = _client(
+        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"])
+    )
+    client.data_modeling.instances.apply.side_effect = CogniteAPIError("forbidden", 403)
+    out = json.loads(
+        apply_instances(
+            client,
+            nodes=[
+                {
+                    "space": "sp_x",
+                    "externalId": "n-1",
+                    "viewSpace": "vs",
+                    "viewExternalId": "V",
+                    "viewVersion": "v1",
+                    "properties": {"name": "N"},
+                }
+            ],
+            dry_run=False,
+        )
+    )
+    assert out["code"] == 403
+    assert out["access"]["allowed"] is False
+    assert out["access"]["missingSpaces"] == ["sp_x"]
+
+
+def test_delete_instances_dry_run_denies_missing_write() -> None:
+    client = _client(
+        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"])
+    )
+    client.data_modeling.instances.retrieve_nodes.return_value = [SimpleNamespace()]
+    out = json.loads(
+        delete_instances(
+            client,
+            items=[{"space": "sp_x", "externalId": "n-1"}],
+            dry_run=True,
+        )
+    )
+    assert out["found"] == 1
+    assert out["wouldDelete"] is False
+    assert out["access"]["missingSpaces"] == ["sp_x"]
+    assert client.data_modeling.instances.delete.call_count == 0
+
+
+def test_apply_spaces_dry_run_denies_missing_write() -> None:
+    client = _client(_cap("dataModelsAcl", ["READ"], all_spaces=True, projects=["bdx-preprod"]))
+    client.data_modeling.spaces.retrieve.return_value = []
+    out = json.loads(
+        apply_spaces(client, spaces=[{"space": "sp_new", "name": "New"}], dry_run=True)
+    )
+    assert out["wouldApply"] is False
+    assert out["access"]["acl"] == "dataModelsAcl"
+    assert out["access"]["missingSpaces"] == ["sp_new"]
+    assert client.data_modeling.spaces.apply.call_count == 0

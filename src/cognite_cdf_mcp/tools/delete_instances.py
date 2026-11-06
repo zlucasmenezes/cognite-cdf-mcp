@@ -10,6 +10,12 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import EdgeId, NodeId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.access import (
+    INSTANCES_ACL,
+    check_spaces,
+    denial_detail,
+    is_denied,
+)
 from cognite_cdf_mcp.tools.instances_common import InstanceType, serialize_instance
 from cognite_cdf_mcp.tools.params import (
     DEFAULT_DRY_RUN,
@@ -34,11 +40,22 @@ def _parse_ids(items: list[Any]) -> list[tuple[str, str]]:
     return parsed
 
 
+def _access_on_forbidden(
+    client: CogniteClient,
+    exc: CogniteException,
+    spaces: list[str],
+) -> dict[str, Any] | None:
+    if not isinstance(exc, CogniteAPIError) or getattr(exc, "code", None) != 403:
+        return None
+    return check_spaces(client, acl=INSTANCES_ACL, action="WRITE", spaces=spaces)
+
+
 def _delete_cognite_error(
     exc: CogniteException,
     *,
     completed_batches: int,
     items: list[dict[str, str]],
+    access: dict[str, Any] | None = None,
 ) -> str:
     if isinstance(exc, CogniteAPIError):
         logger.exception("CDF API error deleting instances")
@@ -47,6 +64,8 @@ def _delete_cognite_error(
             "code": getattr(exc, "code", None),
             "message": str(exc),
         }
+        if access is not None:
+            body["access"] = access
     else:
         logger.exception("Cognite error deleting instances")
         body = {"error": type(exc).__name__, "message": str(exc)}
@@ -73,12 +92,14 @@ def delete_instances(
     CDF call. If a later chunk fails, the error includes ``completedBatches``
     and the ids already deleted.
     """
+    instance_spaces: list[str] = []
     try:
         ids = _parse_ids(parse_object_list(items))
         if not ids:
             raise ValueError("items must contain at least one instance id")
 
         id_batches = chunk(ids, MAX_INSTANCE_WRITE_BATCH)
+        instance_spaces = [space for space, _external_id in ids]
 
         if dry_run:
             found: list[Any] = []
@@ -93,19 +114,29 @@ def delete_instances(
                     )
                 if existing is not None:
                     found.extend(list(existing))
+            access = check_spaces(
+                client,
+                acl=INSTANCES_ACL,
+                action="WRITE",
+                spaces=instance_spaces,
+            )
+            denied = is_denied(access)
+            message = (
+                "Dry run only — instances were not deleted. Missing ids are omitted from items."
+            )
+            if denied:
+                message = f"{message} {denial_detail(access)}"
             return json.dumps(
                 {
                     "dryRun": True,
-                    "wouldDelete": len(found) > 0,
+                    "wouldDelete": len(found) > 0 and not denied,
                     "requested": len(ids),
                     "found": len(found),
                     "batches": len(id_batches),
                     "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
+                    "access": access,
                     "items": [serialize_instance(i) for i in found],
-                    "message": (
-                        "Dry run only — instances were not deleted. "
-                        "Missing ids are omitted from items."
-                    ),
+                    "message": message,
                 },
                 indent=2,
             )
@@ -130,6 +161,7 @@ def delete_instances(
                     exc,
                     completed_batches=completed_batches,
                     items=deleted_ids,
+                    access=_access_on_forbidden(client, exc, instance_spaces),
                 )
             completed_batches += 1
             deleted_ids.extend(
@@ -157,13 +189,15 @@ def delete_instances(
         return json.dumps({"error": "InvalidArgument", "message": str(exc)})
     except CogniteAPIError as exc:
         logger.exception("CDF API error deleting instances")
-        return json.dumps(
-            {
-                "error": "CogniteAPIError",
-                "code": getattr(exc, "code", None),
-                "message": str(exc),
-            }
-        )
+        body = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+        access = _access_on_forbidden(client, exc, instance_spaces)
+        if access is not None:
+            body["access"] = access
+        return json.dumps(body)
     except CogniteException as exc:
         logger.exception("Cognite error deleting instances")
         return json.dumps({"error": type(exc).__name__, "message": str(exc)})
