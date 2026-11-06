@@ -318,10 +318,11 @@ def get_container(
 
 @mcp.tool(title="Filter DSL docs", annotations=READ_ANNOTATIONS)
 def get_filter_docs() -> str:
-    """Return CDF instance filter DSL examples and property-path tips.
+    """Return CDF instance filter DSL examples, limits, and search-vs-query tips.
 
     Use before writing filters for query_instances / search_instances /
-    aggregate_instances.
+    aggregate_instances. Covers in-filter ≤1000, apply/delete batching,
+    AND/OR search, and the search-then-query discovery pattern.
     """
     return _get_filter_docs()
 
@@ -393,16 +394,19 @@ def query_instances(
     instance_space: str | None = None,
     instance_type: Literal["node", "edge"] = "node",
     filter: dict[str, Any] | str | None = None,
+    properties: list[str] | None = None,
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
     include_typing: bool = False,
     environment: str | None = None,
 ) -> str:
-    """Query instances through a view, with optional space, CDF filter, and cursor.
+    """Exact-match query through a view (filter, space, cursor, properties).
 
     Requires dataModelInstancesAcl:READ. Default limit is 100.
     Returns nextCursor when more pages are available.
-    Call get_filter_docs for filter examples.
+    Prefer properties=[…] over fetching all fields when hydrating candidates.
+    For free-text discovery use search_instances first, then query with in on
+    externalIds (see get_filter_docs). in filters accept ≤1000 values.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).
@@ -416,6 +420,7 @@ def query_instances(
         instance_space=instance_space,
         instance_type=instance_type,
         filter=filter,
+        properties=properties,
         limit=limit,
         cursor=cursor,
         include_typing=include_typing,
@@ -432,13 +437,17 @@ def search_instances(
     instance_space: str | None = None,
     instance_type: Literal["node", "edge"] = "node",
     filter: dict[str, Any] | str | None = None,
+    operator: Literal["AND", "OR"] = "AND",
     limit: int = DEFAULT_LIMIT,
     include_typing: bool = False,
     environment: str | None = None,
 ) -> str:
-    """Full-text search instances through a view (name, aliases, etc.).
+    """Full-text search through a view (name, aliases, etc.).
 
     Requires dataModelInstancesAcl:READ. Default limit is 100.
+    operator=AND (default) for specific lookups; operator=OR for exploratory
+    / typeahead. Combine with filter for exact constraints. After discovery,
+    hydrate with query_instances (search-then-query).
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).
@@ -454,6 +463,7 @@ def search_instances(
         instance_space=instance_space,
         instance_type=instance_type,
         filter=filter,
+        operator=operator,
         limit=limit,
         include_typing=include_typing,
     )
@@ -549,6 +559,7 @@ def apply_instances(
 
     Requires dataModelInstancesAcl:WRITE for an actual apply.
     Defaults to dry_run=true (preview only); pass dry_run=false to write.
+    Automatically chunks to ≤1000 nodes/edges per CDF apply call.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).
@@ -575,6 +586,7 @@ def delete_instances(
 
     Requires dataModelInstancesAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only); pass dry_run=false to delete.
+    Automatically chunks to ≤1000 ids per CDF delete call.
     items example: [{"space": "sp_x", "externalId": "MCH-1"}]
 
     environment: optional alias from list_environments (default: session environment;

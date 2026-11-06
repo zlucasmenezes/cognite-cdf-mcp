@@ -38,6 +38,7 @@ def query_instances(
     instance_space: str | None = None,
     instance_type: InstanceType = "node",
     filter: dict[str, Any] | str | None = None,  # noqa: A002
+    properties: list[str] | None = None,
     limit: int = DEFAULT_LIMIT,
     cursor: str | None = None,
     include_typing: bool = False,
@@ -45,6 +46,14 @@ def query_instances(
     """Query instances through a view, with optional space, filter, and cursor.
 
     Passing a view applies a ``hasData`` filter automatically.
+    ``properties`` selects which view properties to return (default ``["*"]``);
+    prefer an explicit list when hydrating graph steps to keep payloads small.
+
+    For free-text discovery, prefer ``search_instances`` first, then query with
+    an ``in`` filter on the candidate externalIds (search-then-query).
+    Multi-hop graph traversal is not exposed as a single tool call yet — use
+    successive queries keyed by relation / edge filters (see get_filter_docs).
+
     Requires ``dataModelInstancesAcl:READ``.
     """
     try:
@@ -71,11 +80,12 @@ def query_instances(
         if cursor_value is not None:
             cursors[_RESULT_SET] = cursor_value
 
+        selected = properties if properties else ["*"]
         query = Query(
             with_={_RESULT_SET: result_expr},
             select={
                 _RESULT_SET: Select(
-                    sources=[SourceSelector(source, properties=["*"])],
+                    sources=[SourceSelector(source, properties=selected)],
                 )
             },
             cursors=cursors,
@@ -94,6 +104,7 @@ def query_instances(
                 "count": len(items),
                 "limit": limit,
                 "nextCursor": next_cursor,
+                "properties": selected,
                 "items": [serialize_instance(item) for item in items],
             },
             indent=2,
