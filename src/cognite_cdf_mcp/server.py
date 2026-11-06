@@ -488,6 +488,11 @@ def aggregate_instances(
     Requires dataModelInstancesAcl:READ.
     aggregates example: {"count": {"property": "externalId"}}
 
+    query is forwarded without an operator. The aggregate SDK method has no
+    operator parameter, so text matching follows the API default. SDK instance
+    search defaults to AND; this tool does not send operator and does not apply
+    that search default.
+
     environment: optional alias from list_environments (default: session environment;
     see use_environment).
     """
@@ -520,6 +525,9 @@ def apply_spaces(
 
     Requires dataModelsAcl:WRITE for an actual apply.
     Defaults to dry_run=true (preview only); pass dry_run=false to write.
+    At most 100 spaces are sent per CDF request (apply and retrieve-by-ids).
+    Longer lists run sequentially. If a later batch fails, the error includes
+    completedBatches and the space ids already applied.
     spaces example: [{"space": "sp_x", "name": "Sandbox", "description": "..."}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -538,6 +546,10 @@ def delete_spaces(
 
     Requires dataModelsAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only); pass dry_run=false to delete.
+    At most 100 spaces are sent per CDF request (delete and retrieve-by-ids).
+    Longer lists run sequentially. If a later batch fails, the error includes
+    completedBatches and the space ids already deleted. Dry run does not
+    validate dependency conflicts.
     spaces example: ["sp_x"] or [{"space": "sp_x"}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -560,6 +572,8 @@ def apply_instances(
     Requires dataModelInstancesAcl:WRITE for an actual apply.
     Defaults to dry_run=true (preview only); pass dry_run=false to write.
     Automatically writes nodes and edges together (nodes first), at most 1000 items per CDF call.
+    replace=true clears omitted properties to the container default or null.
+    auto_create_direct_relations defaults to true and creates empty target nodes.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).
@@ -587,6 +601,8 @@ def delete_instances(
     Requires dataModelInstancesAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only); pass dry_run=false to delete.
     Automatically chunks to ≤1000 ids per CDF delete call.
+    Deleting a node also deletes edges that start or end on it. Too many
+    connected edges can make the real delete fail; dry run does not check that.
     items example: [{"space": "sp_x", "externalId": "MCH-1"}]
 
     environment: optional alias from list_environments (default: session environment;

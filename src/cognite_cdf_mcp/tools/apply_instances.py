@@ -18,7 +18,7 @@ from cognite.client.data_classes.data_modeling import (
 )
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
-from cognite_cdf_mcp.tools.instances_common import serialize_instance
+from cognite_cdf_mcp.tools.instances_common import as_instance_list, serialize_instance
 from cognite_cdf_mcp.tools.params import (
     DEFAULT_DRY_RUN,
     MAX_INSTANCE_WRITE_BATCH,
@@ -152,6 +152,28 @@ def _apply_cognite_error(
     return json.dumps(body)
 
 
+def _group_by_view(applies: list[Any]) -> list[tuple[ViewId | None, list[Any]]]:
+    """Group applies that share one view so dry-run retrieve can request it."""
+    order: list[tuple[str, str, str] | None] = []
+    groups: dict[tuple[str, str, str] | None, list[Any]] = {}
+    for item in applies:
+        key: tuple[str, str, str] | None = None
+        for source in getattr(item, "sources", None) or []:
+            view = getattr(source, "source", None)
+            if isinstance(view, ViewId):
+                key = (view.space, view.external_id, view.version)
+                break
+        if key not in groups:
+            order.append(key)
+            groups[key] = []
+        groups[key].append(item)
+    grouped: list[tuple[ViewId | None, list[Any]]] = []
+    for key in order:
+        view = None if key is None else ViewId(space=key[0], external_id=key[1], version=key[2])
+        grouped.append((view, groups[key]))
+    return grouped
+
+
 def apply_instances(
     client: CogniteClient,
     *,
@@ -175,6 +197,8 @@ def apply_instances(
       }
 
     Defaults to ``DEFAULT_DRY_RUN`` (validates / retrieves existing; no write).
+    When items include a view, dry-run retrieve requests that view so
+    ``existing`` includes properties. ``replace`` is not simulated.
     Pass ``dry_run=false`` to apply. Requires ``dataModelInstancesAcl:WRITE``
     for an actual write.
 
@@ -182,6 +206,9 @@ def apply_instances(
     ``MAX_INSTANCE_WRITE_BATCH`` (1000) items combined per CDF apply call.
     If a later chunk fails, the error includes ``completedBatches`` and the
     ids already applied.
+
+    ``replace=true`` clears omitted properties to the container default or null.
+    ``auto_create_direct_relations`` defaults to true and creates empty target nodes.
     """
     try:
         node_items = parse_object_list(nodes)
@@ -196,18 +223,25 @@ def apply_instances(
         if dry_run:
             existing_nodes: list[Any] = []
             existing_edges: list[Any] = []
-            for batch in chunk(node_applies, MAX_INSTANCE_WRITE_BATCH):
-                retrieved = client.data_modeling.instances.retrieve_nodes(
-                    nodes=[NodeId(n.space, n.external_id) for n in batch]
-                )
-                if retrieved is not None:
-                    existing_nodes.extend(list(retrieved))
-            for batch in chunk(edge_applies, MAX_INSTANCE_WRITE_BATCH):
-                retrieved_e = client.data_modeling.instances.retrieve_edges(
-                    edges=[EdgeId(e.space, e.external_id) for e in batch]
-                )
-                if retrieved_e is not None:
-                    existing_edges.extend(list(retrieved_e))
+            for view, group in _group_by_view(node_applies):
+                sources = [view] if view is not None else None
+                for batch in chunk(group, MAX_INSTANCE_WRITE_BATCH):
+                    retrieved = client.data_modeling.instances.retrieve_nodes(
+                        nodes=[NodeId(n.space, n.external_id) for n in batch],
+                        sources=sources,
+                    )
+                    existing_nodes.extend(as_instance_list(retrieved))
+            for view, group in _group_by_view(edge_applies):
+                sources = [view] if view is not None else None
+                for batch in chunk(group, MAX_INSTANCE_WRITE_BATCH):
+                    retrieved_e = client.data_modeling.instances.retrieve_edges(
+                        edges=[EdgeId(e.space, e.external_id) for e in batch],
+                        sources=sources,
+                    )
+                    existing_edges.extend(as_instance_list(retrieved_e))
+            message = "Dry run only — instances were not written."
+            if replace:
+                message += " replace is not simulated; existing shows current properties."
             return json.dumps(
                 {
                     "dryRun": True,
@@ -227,7 +261,7 @@ def apply_instances(
                         "payload": [e.dump(camel_case=True) for e in edge_applies],
                         "existing": [serialize_instance(e) for e in existing_edges],
                     },
-                    "message": "Dry run only — instances were not written.",
+                    "message": message,
                 },
                 indent=2,
             )
