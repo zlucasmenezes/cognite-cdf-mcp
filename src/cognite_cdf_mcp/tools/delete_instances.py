@@ -11,7 +11,12 @@ from cognite.client.data_classes.data_modeling import EdgeId, NodeId
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
 from cognite_cdf_mcp.tools.instances_common import InstanceType, serialize_instance
-from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, parse_object_list
+from cognite_cdf_mcp.tools.params import (
+    DEFAULT_DRY_RUN,
+    MAX_INSTANCE_WRITE_BATCH,
+    chunk,
+    parse_object_list,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,61 +46,65 @@ def delete_instances(
     ``items`` example: [{"space": "sp_x", "externalId": "MCH-1"}]
     Defaults to ``DEFAULT_DRY_RUN`` (retrieve/report only). Pass ``dry_run=false``
     to delete. Requires ``dataModelInstancesAcl:WRITE`` for an actual delete.
+
+    Deletes are chunked to at most ``MAX_INSTANCE_WRITE_BATCH`` (1000) ids per
+    CDF call.
     """
     try:
         ids = _parse_ids(parse_object_list(items))
         if not ids:
             raise ValueError("items must contain at least one instance id")
 
-        if instance_type == "edge":
-            edge_ids = [EdgeId(space=s, external_id=e) for s, e in ids]
-            if dry_run:
-                existing = client.data_modeling.instances.retrieve_edges(edges=edge_ids)
-                found = list(existing) if existing is not None else []
-                return json.dumps(
-                    {
-                        "dryRun": True,
-                        "wouldDelete": len(found) > 0,
-                        "requested": len(ids),
-                        "found": len(found),
-                        "items": [serialize_instance(i) for i in found],
-                        "message": (
-                            "Dry run only — instances were not deleted. "
-                            "Missing ids are omitted from items."
-                        ),
-                    },
-                    indent=2,
-                )
-            deleted = client.data_modeling.instances.delete(edges=edge_ids)
-        else:
-            node_ids = [NodeId(space=s, external_id=e) for s, e in ids]
-            if dry_run:
-                existing = client.data_modeling.instances.retrieve_nodes(nodes=node_ids)
-                found = list(existing) if existing is not None else []
-                return json.dumps(
-                    {
-                        "dryRun": True,
-                        "wouldDelete": len(found) > 0,
-                        "requested": len(ids),
-                        "found": len(found),
-                        "items": [serialize_instance(i) for i in found],
-                        "message": (
-                            "Dry run only — instances were not deleted. "
-                            "Missing ids are omitted from items."
-                        ),
-                    },
-                    indent=2,
-                )
-            deleted = client.data_modeling.instances.delete(nodes=node_ids)
+        id_batches = chunk(ids, MAX_INSTANCE_WRITE_BATCH)
+        found: list[Any] = []
+        deleted_items: list[Any] = []
 
-        deleted_nodes = list(getattr(deleted, "nodes", []) or [])
-        deleted_edges = list(getattr(deleted, "edges", []) or [])
-        deleted_items = deleted_nodes or deleted_edges
+        if instance_type == "edge":
+            for batch in id_batches:
+                edge_ids = [EdgeId(space=s, external_id=e) for s, e in batch]
+                if dry_run:
+                    existing = client.data_modeling.instances.retrieve_edges(edges=edge_ids)
+                    if existing is not None:
+                        found.extend(list(existing))
+                else:
+                    deleted = client.data_modeling.instances.delete(edges=edge_ids)
+                    deleted_items.extend(list(getattr(deleted, "edges", []) or []))
+        else:
+            for batch in id_batches:
+                node_ids = [NodeId(space=s, external_id=e) for s, e in batch]
+                if dry_run:
+                    existing = client.data_modeling.instances.retrieve_nodes(nodes=node_ids)
+                    if existing is not None:
+                        found.extend(list(existing))
+                else:
+                    deleted = client.data_modeling.instances.delete(nodes=node_ids)
+                    deleted_items.extend(list(getattr(deleted, "nodes", []) or []))
+
+        if dry_run:
+            return json.dumps(
+                {
+                    "dryRun": True,
+                    "wouldDelete": len(found) > 0,
+                    "requested": len(ids),
+                    "found": len(found),
+                    "batches": len(id_batches),
+                    "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
+                    "items": [serialize_instance(i) for i in found],
+                    "message": (
+                        "Dry run only — instances were not deleted. "
+                        "Missing ids are omitted from items."
+                    ),
+                },
+                indent=2,
+            )
+
         return json.dumps(
             {
                 "dryRun": False,
                 "deleted": len(deleted_items) > 0,
                 "count": len(deleted_items),
+                "batches": len(id_batches),
+                "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
                 "items": [
                     {
                         "space": getattr(i, "space", None),
