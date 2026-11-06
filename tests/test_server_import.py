@@ -26,6 +26,11 @@ def test_server_imports_and_registers_core_tools() -> None:
         assert ann.read_only_hint is True, name
         assert ann.open_world_hint is False, name
         assert ann.destructive_hint is False, name
+
+    # Static filter docs do not call CDF; live instance queries stay open-world.
+    filter_docs = tools["get_filter_docs"].annotations
+    assert filter_docs.open_world_hint is False
+    assert filter_docs.read_only_hint is True
     assert tools["query_instances"].annotations.open_world_hint is True
 
     # Write tools share DEFAULT_DRY_RUN (experimental safety switch).
@@ -38,3 +43,23 @@ def test_server_imports_and_registers_core_tools() -> None:
     ):
         props = tools[name].parameters["properties"]
         assert props["dry_run"].get("default") is DEFAULT_DRY_RUN, name
+
+    apply_doc = tools["apply_instances"].description or ""
+    assert "replace=true" in apply_doc
+    assert "clears omitted properties" in apply_doc
+    assert "auto_create_direct_relations" in apply_doc
+    assert "empty target nodes" in apply_doc
+    assert tools["apply_instances"].annotations.destructive_hint is False
+
+    aggregate = tools["aggregate_instances"]
+    aggregate_doc = " ".join((aggregate.description or "").split())
+    assert "operator" not in aggregate.parameters["properties"]
+    assert "no operator parameter" in aggregate_doc
+    assert "defaults to AND" in aggregate_doc
+
+    for name in ("apply_spaces", "delete_spaces"):
+        doc = tools[name].description or ""
+        assert "100" in doc, name
+        assert "completedBatches" in doc, name
+    delete_spaces_doc = " ".join((tools["delete_spaces"].description or "").split())
+    assert "does not validate dependency conflicts" in delete_spaces_doc
