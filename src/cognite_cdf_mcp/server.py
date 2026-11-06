@@ -75,6 +75,13 @@ SESSION_ANNOTATIONS = ToolAnnotations(
     idempotentHint=True,
     openWorldHint=False,
 )
+# Static filter DSL docs (no CDF / network). Closed-world, unlike live CDF reads.
+FILTER_DOCS_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
 
 
 def _call(environment: str | None, fn: Callable[..., str], /, **kwargs: Any) -> str:
@@ -316,7 +323,7 @@ def get_container(
     return _call(environment, _get_container, space=space, external_id=external_id)
 
 
-@mcp.tool(title="Filter DSL docs", annotations=READ_ANNOTATIONS)
+@mcp.tool(title="Filter DSL docs", annotations=FILTER_DOCS_ANNOTATIONS)
 def get_filter_docs() -> str:
     """Return CDF instance filter DSL examples, limits, and search-vs-query tips.
 

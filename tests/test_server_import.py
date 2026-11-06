@@ -26,6 +26,11 @@ def test_server_imports_and_registers_core_tools() -> None:
         assert ann.read_only_hint is True, name
         assert ann.open_world_hint is False, name
         assert ann.destructive_hint is False, name
+
+    # Static filter docs do not call CDF; live instance queries stay open-world.
+    filter_docs = tools["get_filter_docs"].annotations
+    assert filter_docs.open_world_hint is False
+    assert filter_docs.read_only_hint is True
     assert tools["query_instances"].annotations.open_world_hint is True
 
     # Write tools share DEFAULT_DRY_RUN (experimental safety switch).
