@@ -76,6 +76,10 @@ def aggregate_instances(
       {"count": {"property": "externalId"}}
       [{"avg": {"property": "temperature"}}]
 
+    ``query`` is forwarded without an ``operator``. The aggregate SDK method
+    has no operator parameter, so text matching follows the API default.
+    SDK instance search defaults to AND; this tool does not apply that default.
+
     Requires ``dataModelInstancesAcl:READ``.
     """
     try:
