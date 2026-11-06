@@ -19,18 +19,22 @@ Pagination cursors are project-scoped. After you switch project, run the query a
 
 Write tools (`apply_*` / `delete_*`) default to `dry_run=true` (preview only). Pass `dry_run=false` only when you intend to mutate CDF. Read `environment` and `project` on the preview before a real write. Schema dry-runs (`apply_spaces`, `delete_spaces`, `delete_view`) only need `READ`.
 
-`apply_instances` and `delete_instances` auto-chunk to at most 1000 items per CDF call ([Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances)).
+`apply_instances` writes one sequence: all nodes first, then all edges. Each CDF call sends at most 1000 nodes and edges combined ([Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances)). Calls run one after another. If a later batch fails, earlier batches may already be written; the error JSON includes `completedBatches` and the space/externalId values already applied.
+
+`delete_instances` chunks ids to at most 1000 per call. If a later batch fails, the error includes `completedBatches` and the ids already deleted.
 
 ## Search vs query
 
-`search_instances` is full-text matching on text properties (`operator` defaults to `AND`):
+`search_instances` is full-text matching on text properties (`operator` defaults to `AND`). It does not return `nextCursor`.
 
 - `operator=AND` — every term must match. Use it for a specific lookup.
 - `operator=OR` — any term may match. Use it for exploratory or typeahead search.
 
 Add `filter` on search when you also need exact constraints (status, space, enums).
 
-`query_instances` is exact-match filtering (`equals`, `in`, `range`, `prefix`, `exists`, `hasData`, nested `and` / `or` / `not`) with `cursor` pagination. Prefer it for deterministic reads and for hydrating candidates. Pass `properties=[…]` instead of `"*"` when you only need a few fields.
+`query_instances` is exact-match filtering (`equals`, `in`, `range`, `prefix`, `exists`, `hasData`, nested `and` / `or` / `not`) with `cursor` pagination. Prefer it for deterministic reads and for hydrating candidates. Pass `properties=[…]` instead of `"*"` when you only need a few fields. When more rows exist, the response includes `nextCursor`.
+
+`aggregate_instances` returns aggregates for the view. It does not return `nextCursor`.
 
 Search-then-query: `search_instances` to rank candidate anchors, then `query_instances` with an `in` filter on those `externalId` values.
 
@@ -38,9 +42,9 @@ Search-then-query: `search_instances` to rank candidate anchors, then `query_ins
 
 ## Limits
 
-- Default `limit` is 100 on list, search, query, and aggregate tools. If the response includes `nextCursor`, call again with `cursor` set to that value until `nextCursor` is null. Page instead of raising the limit. Exceeding CDF concurrency budgets returns 429 ([Limits and restrictions](https://docs.cognite.com/cdf/dm/dm_reference/dm_limits_and_restrictions)).
+- Default `limit` is 100 on list, search, query, and aggregate tools. Only `query_instances` and the schema `list_*` tools (`list_spaces`, `list_views`, `list_data_models`, `list_containers`) return `nextCursor`. When they do, call again with `cursor` set to that value until `nextCursor` is null. Do not paginate `search_instances` or `aggregate_instances`. Exceeding CDF concurrency budgets returns 429 ([Limits and restrictions](https://docs.cognite.com/cdf/dm/dm_reference/dm_limits_and_restrictions)).
 - `in.values` accepts at most 1000 entries. A larger `in` filter is rejected. This server does not split `in` filters for you. Batch values yourself (≤1000), query each batch, and merge. Dedupe by space + externalId.
-- Instance apply/delete auto-chunk at 1000. That chunking does not apply to `in` filters.
+- Instance apply sends nodes then edges, at most 1000 combined items per CDF call. That chunking does not apply to `in` filters.
 
 Search operators: [Search features](https://docs.cognite.com/cdf/dm/dm_concepts/dm_search). Filters, pagination, and graph concepts: [Query features](https://docs.cognite.com/cdf/dm/dm_concepts/dm_querying).
 
@@ -58,7 +62,9 @@ In relation filters, prefer `[space, "ViewExternalId/version", property]`.
 
 ## Graph steps
 
-Graph traversal is not a single tool. Walk a relation with successive `query_instances` calls: filter one hop (edge type or relation property; see the edge-type example from `get_filter_docs`), then hydrate the next ids with `in` on `externalId` in batches of at most 1000. When the first step is discovery, search first, then run a constrained query. Do not scan a view broadly to find a name.
+There is no graph traversal tool. Walk a relation with successive `query_instances` calls.
+
+A step that filters `["edge", "type"]` must pass `instance_type="edge"`. Read the edge, then follow `startNode` and `endNode` with both `space` and `externalId` still attached. Hydrate those nodes with `query_instances` (`instance_type="node"`) and an `in` filter on `externalId` in batches of at most 1000. Pass `instance_space` when every id shares one space; when they do not, keep each node's space in the filter. When the first step is discovery, search first, then run a constrained query. Do not scan a view broadly to find a name.
 
 ## Typical reads
 

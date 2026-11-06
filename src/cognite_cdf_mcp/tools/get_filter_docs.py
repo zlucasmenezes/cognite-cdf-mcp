@@ -65,8 +65,10 @@ FILTER_DOCS: dict = {
             f"at most {MAX_INSTANCE_WRITE_BATCH} items per CDF call. "
             "delete_instances chunks one id list to at most "
             f"{MAX_INSTANCE_WRITE_BATCH} ids per CDF call.",
-            "Exceeding CDF concurrency budgets returns 429; page with nextCursor "
-            "instead of raising limits aggressively.",
+            "Only query_instances and schema list_* tools return nextCursor. "
+            "search_instances and aggregate_instances do not. Page with "
+            "nextCursor instead of raising limits aggressively. Exceeding CDF "
+            "concurrency budgets returns 429.",
         ],
     },
     "examples": [
