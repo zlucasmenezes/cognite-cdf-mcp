@@ -559,7 +559,7 @@ def apply_instances(
 
     Requires dataModelInstancesAcl:WRITE for an actual apply.
     Defaults to dry_run=true (preview only); pass dry_run=false to write.
-    Automatically chunks to ≤1000 nodes/edges per CDF apply call.
+    Automatically writes nodes and edges together (nodes first), at most 1000 items per CDF call.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).

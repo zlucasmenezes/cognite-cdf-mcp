@@ -34,6 +34,28 @@ def _parse_ids(items: list[Any]) -> list[tuple[str, str]]:
     return parsed
 
 
+def _delete_cognite_error(
+    exc: CogniteException,
+    *,
+    completed_batches: int,
+    items: list[dict[str, str]],
+) -> str:
+    if isinstance(exc, CogniteAPIError):
+        logger.exception("CDF API error deleting instances")
+        body: dict[str, Any] = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+    else:
+        logger.exception("Cognite error deleting instances")
+        body = {"error": type(exc).__name__, "message": str(exc)}
+    if completed_batches:
+        body["completedBatches"] = completed_batches
+        body["items"] = items
+    return json.dumps(body)
+
+
 def delete_instances(
     client: CogniteClient,
     *,
@@ -48,7 +70,8 @@ def delete_instances(
     to delete. Requires ``dataModelInstancesAcl:WRITE`` for an actual delete.
 
     Deletes are chunked to at most ``MAX_INSTANCE_WRITE_BATCH`` (1000) ids per
-    CDF call.
+    CDF call. If a later chunk fails, the error includes ``completedBatches``
+    and the ids already deleted.
     """
     try:
         ids = _parse_ids(parse_object_list(items))
@@ -56,31 +79,20 @@ def delete_instances(
             raise ValueError("items must contain at least one instance id")
 
         id_batches = chunk(ids, MAX_INSTANCE_WRITE_BATCH)
-        found: list[Any] = []
-        deleted_items: list[Any] = []
-
-        if instance_type == "edge":
-            for batch in id_batches:
-                edge_ids = [EdgeId(space=s, external_id=e) for s, e in batch]
-                if dry_run:
-                    existing = client.data_modeling.instances.retrieve_edges(edges=edge_ids)
-                    if existing is not None:
-                        found.extend(list(existing))
-                else:
-                    deleted = client.data_modeling.instances.delete(edges=edge_ids)
-                    deleted_items.extend(list(getattr(deleted, "edges", []) or []))
-        else:
-            for batch in id_batches:
-                node_ids = [NodeId(space=s, external_id=e) for s, e in batch]
-                if dry_run:
-                    existing = client.data_modeling.instances.retrieve_nodes(nodes=node_ids)
-                    if existing is not None:
-                        found.extend(list(existing))
-                else:
-                    deleted = client.data_modeling.instances.delete(nodes=node_ids)
-                    deleted_items.extend(list(getattr(deleted, "nodes", []) or []))
 
         if dry_run:
+            found: list[Any] = []
+            for batch in id_batches:
+                if instance_type == "edge":
+                    existing = client.data_modeling.instances.retrieve_edges(
+                        edges=[EdgeId(space=s, external_id=e) for s, e in batch]
+                    )
+                else:
+                    existing = client.data_modeling.instances.retrieve_nodes(
+                        nodes=[NodeId(space=s, external_id=e) for s, e in batch]
+                    )
+                if existing is not None:
+                    found.extend(list(existing))
             return json.dumps(
                 {
                     "dryRun": True,
@@ -96,6 +108,32 @@ def delete_instances(
                     ),
                 },
                 indent=2,
+            )
+
+        deleted_items: list[Any] = []
+        deleted_ids: list[dict[str, str]] = []
+        completed_batches = 0
+        for batch in id_batches:
+            try:
+                if instance_type == "edge":
+                    deleted = client.data_modeling.instances.delete(
+                        edges=[EdgeId(space=s, external_id=e) for s, e in batch]
+                    )
+                    deleted_items.extend(list(getattr(deleted, "edges", []) or []))
+                else:
+                    deleted = client.data_modeling.instances.delete(
+                        nodes=[NodeId(space=s, external_id=e) for s, e in batch]
+                    )
+                    deleted_items.extend(list(getattr(deleted, "nodes", []) or []))
+            except CogniteException as exc:
+                return _delete_cognite_error(
+                    exc,
+                    completed_batches=completed_batches,
+                    items=deleted_ids,
+                )
+            completed_batches += 1
+            deleted_ids.extend(
+                {"space": space, "externalId": external_id} for space, external_id in batch
             )
 
         return json.dumps(

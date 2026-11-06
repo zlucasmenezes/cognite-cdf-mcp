@@ -109,6 +109,49 @@ def _parse_edge(item: dict[str, Any]) -> EdgeApply:
     )
 
 
+def _instance_ref(item: Any) -> dict[str, str]:
+    return {"space": str(item.space), "externalId": str(item.external_id)}
+
+
+def _combined_write_batches(
+    node_applies: list[NodeApply],
+    edge_applies: list[EdgeApply],
+) -> list[tuple[list[NodeApply], list[EdgeApply]]]:
+    """All nodes, then all edges, in slices of at most ``MAX_INSTANCE_WRITE_BATCH``."""
+    sequence: list[tuple[str, Any]] = [("node", node) for node in node_applies]
+    sequence.extend(("edge", edge) for edge in edge_applies)
+    batches: list[tuple[list[NodeApply], list[EdgeApply]]] = []
+    for group in chunk(sequence, MAX_INSTANCE_WRITE_BATCH):
+        nodes = [item for kind, item in group if kind == "node"]
+        edges = [item for kind, item in group if kind == "edge"]
+        batches.append((nodes, edges))
+    return batches
+
+
+def _apply_cognite_error(
+    exc: CogniteException,
+    *,
+    completed_batches: int,
+    nodes: list[dict[str, str]],
+    edges: list[dict[str, str]],
+) -> str:
+    if isinstance(exc, CogniteAPIError):
+        logger.exception("CDF API error applying instances")
+        body: dict[str, Any] = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+    else:
+        logger.exception("Cognite error applying instances")
+        body = {"error": type(exc).__name__, "message": str(exc)}
+    if completed_batches:
+        body["completedBatches"] = completed_batches
+        body["nodes"] = nodes
+        body["edges"] = edges
+    return json.dumps(body)
+
+
 def apply_instances(
     client: CogniteClient,
     *,
@@ -135,8 +178,10 @@ def apply_instances(
     Pass ``dry_run=false`` to apply. Requires ``dataModelInstancesAcl:WRITE``
     for an actual write.
 
-    Writes are chunked to at most ``MAX_INSTANCE_WRITE_BATCH`` (1000) items per
-    CDF apply call (Data Modeling limit).
+    Writes send all nodes first, then all edges, in chunks of at most
+    ``MAX_INSTANCE_WRITE_BATCH`` (1000) items combined per CDF apply call.
+    If a later chunk fails, the error includes ``completedBatches`` and the
+    ids already applied.
     """
     try:
         node_items = parse_object_list(nodes)
@@ -146,20 +191,18 @@ def apply_instances(
 
         node_applies = [_parse_node(item) for item in node_items]
         edge_applies = [_parse_edge(item) for item in edge_items]
-        node_batches = chunk(node_applies, MAX_INSTANCE_WRITE_BATCH) if node_applies else []
-        edge_batches = chunk(edge_applies, MAX_INSTANCE_WRITE_BATCH) if edge_applies else []
-        batch_count = max(len(node_batches), len(edge_batches), 1)
+        write_batches = _combined_write_batches(node_applies, edge_applies)
 
         if dry_run:
             existing_nodes: list[Any] = []
             existing_edges: list[Any] = []
-            for batch in node_batches:
+            for batch in chunk(node_applies, MAX_INSTANCE_WRITE_BATCH):
                 retrieved = client.data_modeling.instances.retrieve_nodes(
                     nodes=[NodeId(n.space, n.external_id) for n in batch]
                 )
                 if retrieved is not None:
                     existing_nodes.extend(list(retrieved))
-            for batch in edge_batches:
+            for batch in chunk(edge_applies, MAX_INSTANCE_WRITE_BATCH):
                 retrieved_e = client.data_modeling.instances.retrieve_edges(
                     edges=[EdgeId(e.space, e.external_id) for e in batch]
                 )
@@ -170,7 +213,7 @@ def apply_instances(
                     "dryRun": True,
                     "wouldApply": True,
                     "replace": replace,
-                    "batches": batch_count,
+                    "batches": len(write_batches),
                     "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
                     "nodes": {
                         "requested": len(node_applies),
@@ -191,16 +234,27 @@ def apply_instances(
 
         applied_nodes: list[Any] = []
         applied_edges: list[Any] = []
-        # Pair node/edge batches by index; missing side is None for that apply call.
-        for i in range(batch_count):
-            nodes_batch = node_batches[i] if i < len(node_batches) else None
-            edges_batch = edge_batches[i] if i < len(edge_batches) else None
-            result = client.data_modeling.instances.apply(
-                nodes=nodes_batch or None,
-                edges=edges_batch or None,
-                replace=replace,
-                auto_create_direct_relations=auto_create_direct_relations,
-            )
+        applied_node_ids: list[dict[str, str]] = []
+        applied_edge_ids: list[dict[str, str]] = []
+        completed_batches = 0
+        for nodes_batch, edges_batch in write_batches:
+            try:
+                result = client.data_modeling.instances.apply(
+                    nodes=nodes_batch or None,
+                    edges=edges_batch or None,
+                    replace=replace,
+                    auto_create_direct_relations=auto_create_direct_relations,
+                )
+            except CogniteException as exc:
+                return _apply_cognite_error(
+                    exc,
+                    completed_batches=completed_batches,
+                    nodes=applied_node_ids,
+                    edges=applied_edge_ids,
+                )
+            completed_batches += 1
+            applied_node_ids.extend(_instance_ref(node) for node in nodes_batch)
+            applied_edge_ids.extend(_instance_ref(edge) for edge in edges_batch)
             applied_nodes.extend(list(getattr(result, "nodes", []) or []))
             applied_edges.extend(list(getattr(result, "edges", []) or []))
 
@@ -209,7 +263,7 @@ def apply_instances(
                 "dryRun": False,
                 "applied": True,
                 "replace": replace,
-                "batches": batch_count,
+                "batches": len(write_batches),
                 "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
                 "nodes": {
                     "count": len(applied_nodes),
