@@ -23,7 +23,7 @@ uv run ruff format .
 uv run pytest -q
 ```
 
-Optional: `uv run pre-commit install` so ruff runs on every commit.
+Optional: `uv run pre-commit install` so each commit formats the staged files with ruff and rejects a message that is not a Conventional Commit. Push does not run these hooks; CI checks the PR.
 
 ## Releases
 
