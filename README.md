@@ -41,8 +41,8 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 
 | Tool | Description |
 | --- | --- |
-| `apply_instances` | Create/update nodes/edges (`dry_run=true` by default; auto-chunks ≤1000/call) |
-| `delete_instances` | Delete nodes/edges by ids (`dry_run=true` by default; auto-chunks ≤1000/call) |
+| `apply_instances` | Create/update nodes/edges (`dry_run=true` by default; nodes and edges together, nodes first, ≤1000 per call) |
+| `delete_instances` | Delete nodes/edges by ids (`dry_run=true` by default; auto-chunks ≤1000 ids per call) |
 
 ### Schema writes (`dataModelsAcl:WRITE`)
 
@@ -57,7 +57,7 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 Behavior follows Cognite Docs:
 
 - [Limits and restrictions](https://docs.cognite.com/cdf/dm/dm_reference/dm_limits_and_restrictions) — concurrency / 429
-- [Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances) — apply/delete ≤1000 items per request
+- [Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances) — apply/delete ≤1000 items per request (apply: nodes and edges together, nodes first)
 - [Search features](https://docs.cognite.com/cdf/dm/dm_concepts/dm_search) — full-text search and `AND`/`OR` operators
 - [Query features](https://docs.cognite.com/cdf/dm/dm_concepts/dm_querying) — filters, graph traversal, pagination
 

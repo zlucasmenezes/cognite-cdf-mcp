@@ -61,8 +61,10 @@ FILTER_DOCS: dict = {
         "notes": [
             f"in.values accepts at most {MAX_IN_FILTER_VALUES} entries; "
             "this MCP rejects larger filters early. Split into batches and merge.",
-            f"apply_instances / delete_instances auto-chunk to "
-            f"{MAX_INSTANCE_WRITE_BATCH} items per CDF call.",
+            "apply_instances writes nodes and edges together, nodes first, "
+            f"at most {MAX_INSTANCE_WRITE_BATCH} items per CDF call. "
+            "delete_instances chunks one id list to at most "
+            f"{MAX_INSTANCE_WRITE_BATCH} ids per CDF call.",
             "Exceeding CDF concurrency budgets returns 429; page with nextCursor "
             "instead of raising limits aggressively.",
         ],
