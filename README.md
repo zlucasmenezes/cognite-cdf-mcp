@@ -25,7 +25,7 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 | `get_view` | Retrieve one view by space / externalId / version |
 | `list_containers` | List containers (lean metadata; `limit=100`, `cursor` / `nextCursor`) |
 | `get_container` | Retrieve one container by space / externalId |
-| `get_filter_docs` | Filter DSL examples and property-path tips for instance queries |
+| `get_filter_docs` | Filter DSL, DM limits (`in` ≤1000, write batches), search vs query tips |
 
 ### Instance reads (`dataModelInstancesAcl:READ`)
 
@@ -33,16 +33,16 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 | --- | --- |
 | `get_instance` | Retrieve one node/edge by space / externalId (optional view projection) |
 | `inspect_instance` | List involved views/containers for one node/edge |
-| `query_instances` | Query instances through a view (`filter`, `instance_space`, `cursor`; default `limit=100`) |
-| `search_instances` | Full-text search through a view (default `limit=100`) |
+| `query_instances` | Exact-match query (`filter`, `instance_space`, `properties`, `cursor`; default `limit=100`) |
+| `search_instances` | Full-text search (`operator` AND/OR, optional `filter`; default `limit=100`) |
 | `aggregate_instances` | Count/sum/avg/min/max through a view |
 
 ### Instance writes (`dataModelInstancesAcl:WRITE`)
 
 | Tool | Description |
 | --- | --- |
-| `apply_instances` | Create/update nodes/edges (`dry_run=true` by default; dry run only needs `READ`) |
-| `delete_instances` | Delete nodes/edges by ids (`dry_run=true` by default; dry run only needs `READ`) |
+| `apply_instances` | Create/update nodes/edges (`dry_run=true` by default; nodes and edges together, nodes first, ≤1000 per call) |
+| `delete_instances` | Delete nodes/edges by ids (`dry_run=true` by default; auto-chunks ≤1000 ids per call) |
 
 ### Schema writes (`dataModelsAcl:WRITE`)
 
@@ -51,6 +51,17 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 | `apply_spaces` | Create/update spaces (`dry_run=true` by default; dry run only needs `READ`) |
 | `delete_spaces` | Delete spaces by id (`dry_run=true` by default; dry run only needs `READ`) |
 | `delete_view` | Delete one view by space / externalId / version (`dry_run=true` by default; dry run only needs `READ`) |
+
+### Data Modeling limits (agents)
+
+Behavior follows Cognite Docs:
+
+- [Limits and restrictions](https://docs.cognite.com/cdf/dm/dm_reference/dm_limits_and_restrictions) — concurrency / 429
+- [Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances) — apply/delete ≤1000 items per request (apply: nodes and edges together, nodes first)
+- [Search features](https://docs.cognite.com/cdf/dm/dm_concepts/dm_search) — full-text search and `AND`/`OR` operators
+- [Query features](https://docs.cognite.com/cdf/dm/dm_concepts/dm_querying) — filters, graph traversal, pagination
+
+MCP tooling mirrors those rules (`in` ≤1000 with early rejection, write auto-chunking, search `operator`, query `properties`). Call **`get_filter_docs`** for filter examples and the search-then-query pattern.
 
 ## Requirements
 

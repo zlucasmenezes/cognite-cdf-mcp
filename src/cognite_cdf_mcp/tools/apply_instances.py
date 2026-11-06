@@ -19,7 +19,12 @@ from cognite.client.data_classes.data_modeling import (
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
 from cognite_cdf_mcp.tools.instances_common import serialize_instance
-from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, parse_object_list
+from cognite_cdf_mcp.tools.params import (
+    DEFAULT_DRY_RUN,
+    MAX_INSTANCE_WRITE_BATCH,
+    chunk,
+    parse_object_list,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +109,49 @@ def _parse_edge(item: dict[str, Any]) -> EdgeApply:
     )
 
 
+def _instance_ref(item: Any) -> dict[str, str]:
+    return {"space": str(item.space), "externalId": str(item.external_id)}
+
+
+def _combined_write_batches(
+    node_applies: list[NodeApply],
+    edge_applies: list[EdgeApply],
+) -> list[tuple[list[NodeApply], list[EdgeApply]]]:
+    """All nodes, then all edges, in slices of at most ``MAX_INSTANCE_WRITE_BATCH``."""
+    sequence: list[tuple[str, Any]] = [("node", node) for node in node_applies]
+    sequence.extend(("edge", edge) for edge in edge_applies)
+    batches: list[tuple[list[NodeApply], list[EdgeApply]]] = []
+    for group in chunk(sequence, MAX_INSTANCE_WRITE_BATCH):
+        nodes = [item for kind, item in group if kind == "node"]
+        edges = [item for kind, item in group if kind == "edge"]
+        batches.append((nodes, edges))
+    return batches
+
+
+def _apply_cognite_error(
+    exc: CogniteException,
+    *,
+    completed_batches: int,
+    nodes: list[dict[str, str]],
+    edges: list[dict[str, str]],
+) -> str:
+    if isinstance(exc, CogniteAPIError):
+        logger.exception("CDF API error applying instances")
+        body: dict[str, Any] = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+    else:
+        logger.exception("Cognite error applying instances")
+        body = {"error": type(exc).__name__, "message": str(exc)}
+    if completed_batches:
+        body["completedBatches"] = completed_batches
+        body["nodes"] = nodes
+        body["edges"] = edges
+    return json.dumps(body)
+
+
 def apply_instances(
     client: CogniteClient,
     *,
@@ -129,6 +177,11 @@ def apply_instances(
     Defaults to ``DEFAULT_DRY_RUN`` (validates / retrieves existing; no write).
     Pass ``dry_run=false`` to apply. Requires ``dataModelInstancesAcl:WRITE``
     for an actual write.
+
+    Writes send all nodes first, then all edges, in chunks of at most
+    ``MAX_INSTANCE_WRITE_BATCH`` (1000) items combined per CDF apply call.
+    If a later chunk fails, the error includes ``completedBatches`` and the
+    ids already applied.
     """
     try:
         node_items = parse_object_list(nodes)
@@ -138,25 +191,30 @@ def apply_instances(
 
         node_applies = [_parse_node(item) for item in node_items]
         edge_applies = [_parse_edge(item) for item in edge_items]
+        write_batches = _combined_write_batches(node_applies, edge_applies)
 
         if dry_run:
-            existing_nodes = []
-            existing_edges = []
-            if node_applies:
+            existing_nodes: list[Any] = []
+            existing_edges: list[Any] = []
+            for batch in chunk(node_applies, MAX_INSTANCE_WRITE_BATCH):
                 retrieved = client.data_modeling.instances.retrieve_nodes(
-                    nodes=[NodeId(n.space, n.external_id) for n in node_applies]
+                    nodes=[NodeId(n.space, n.external_id) for n in batch]
                 )
-                existing_nodes = list(retrieved) if retrieved is not None else []
-            if edge_applies:
+                if retrieved is not None:
+                    existing_nodes.extend(list(retrieved))
+            for batch in chunk(edge_applies, MAX_INSTANCE_WRITE_BATCH):
                 retrieved_e = client.data_modeling.instances.retrieve_edges(
-                    edges=[EdgeId(e.space, e.external_id) for e in edge_applies]
+                    edges=[EdgeId(e.space, e.external_id) for e in batch]
                 )
-                existing_edges = list(retrieved_e) if retrieved_e is not None else []
+                if retrieved_e is not None:
+                    existing_edges.extend(list(retrieved_e))
             return json.dumps(
                 {
                     "dryRun": True,
                     "wouldApply": True,
                     "replace": replace,
+                    "batches": len(write_batches),
+                    "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
                     "nodes": {
                         "requested": len(node_applies),
                         "alreadyExist": len(existing_nodes),
@@ -174,24 +232,46 @@ def apply_instances(
                 indent=2,
             )
 
-        result = client.data_modeling.instances.apply(
-            nodes=node_applies or None,
-            edges=edge_applies or None,
-            replace=replace,
-            auto_create_direct_relations=auto_create_direct_relations,
-        )
+        applied_nodes: list[Any] = []
+        applied_edges: list[Any] = []
+        applied_node_ids: list[dict[str, str]] = []
+        applied_edge_ids: list[dict[str, str]] = []
+        completed_batches = 0
+        for nodes_batch, edges_batch in write_batches:
+            try:
+                result = client.data_modeling.instances.apply(
+                    nodes=nodes_batch or None,
+                    edges=edges_batch or None,
+                    replace=replace,
+                    auto_create_direct_relations=auto_create_direct_relations,
+                )
+            except CogniteException as exc:
+                return _apply_cognite_error(
+                    exc,
+                    completed_batches=completed_batches,
+                    nodes=applied_node_ids,
+                    edges=applied_edge_ids,
+                )
+            completed_batches += 1
+            applied_node_ids.extend(_instance_ref(node) for node in nodes_batch)
+            applied_edge_ids.extend(_instance_ref(edge) for edge in edges_batch)
+            applied_nodes.extend(list(getattr(result, "nodes", []) or []))
+            applied_edges.extend(list(getattr(result, "edges", []) or []))
+
         return json.dumps(
             {
                 "dryRun": False,
                 "applied": True,
                 "replace": replace,
+                "batches": len(write_batches),
+                "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
                 "nodes": {
-                    "count": len(getattr(result, "nodes", []) or []),
-                    "items": [serialize_instance(n) for n in (getattr(result, "nodes", []) or [])],
+                    "count": len(applied_nodes),
+                    "items": [serialize_instance(n) for n in applied_nodes],
                 },
                 "edges": {
-                    "count": len(getattr(result, "edges", []) or []),
-                    "items": [serialize_instance(e) for e in (getattr(result, "edges", []) or [])],
+                    "count": len(applied_edges),
+                    "items": [serialize_instance(e) for e in applied_edges],
                 },
             },
             indent=2,
