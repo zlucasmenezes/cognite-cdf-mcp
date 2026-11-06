@@ -160,8 +160,7 @@ def delete_instances(
                 )
             else:
                 message = (
-                    "Dry run only — instances were not deleted. "
-                    "Missing ids are omitted from items."
+                    "Dry run only — instances were not deleted. Missing ids are omitted from items."
                 )
             return json.dumps(
                 {
