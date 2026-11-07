@@ -227,7 +227,7 @@ CI (GitHub Actions on `main` / PRs) runs ruff check + format `--check`, imports 
 
 ### Pre-commit
 
-Runs `ruff check --fix` and `ruff format` automatically on every commit:
+On `git commit`, ruff fixes and formats the staged files. If it changes them, the commit stops so you can review and stage the result. The commit message must be a Conventional Commit (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`). Nothing runs on `git push`; CI checks the PR again.
 
 ```bash
 uv sync --group dev
