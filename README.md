@@ -56,8 +56,8 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 
 | Tool | Description |
 | --- | --- |
-| `apply_spaces` | Create/update spaces (`dry_run=true` by default; dry run only needs `READ`) |
-| `delete_spaces` | Delete spaces by id (`dry_run=true` by default; dry run only needs `READ`) |
+| `apply_spaces` | Create/update spaces (`dry_run=true` by default; ≤100 per CDF request, sequential batches) |
+| `delete_spaces` | Delete spaces by id (`dry_run=true` by default; ≤100 per CDF request; dry run does not validate dependencies) |
 | `delete_view` | Delete one view by space / externalId / version (`dry_run=true` by default; dry run only needs `READ`) |
 
 ### Data Modeling limits (agents)
@@ -235,7 +235,7 @@ CI (GitHub Actions on `main` / PRs) runs ruff check + format `--check`, imports 
 
 ### Pre-commit
 
-Runs `ruff check --fix` and `ruff format` automatically on every commit:
+On `git commit`, ruff fixes and formats the staged files. If it changes them, the commit stops so you can review and stage the result. The commit message must be a Conventional Commit (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`). Nothing runs on `git push`; CI checks the PR again.
 
 ```bash
 uv sync --group dev

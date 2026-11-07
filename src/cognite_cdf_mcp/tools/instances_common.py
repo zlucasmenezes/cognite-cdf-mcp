@@ -42,6 +42,19 @@ def optional_view_id(
     return ViewId(space=space, external_id=external_id, version=version)  # type: ignore[arg-type]
 
 
+def as_instance_list(value: Any) -> list[Any]:
+    """Normalize a retrieve result to a list (None, one instance, or many)."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return list(value)
+    space = getattr(value, "space", None)
+    external_id = getattr(value, "external_id", None)
+    if isinstance(space, str) and isinstance(external_id, str):
+        return [value]
+    return list(value)
+
+
 def serialize_instance(instance: Any) -> dict[str, Any]:
     """Serialize a node/edge with properties via the SDK dump."""
     if hasattr(instance, "dump"):

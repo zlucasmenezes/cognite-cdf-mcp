@@ -11,7 +11,11 @@ from cognite.client.data_classes.data_modeling import SpaceApply
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
 from cognite_cdf_mcp.tools.access import MODELS_ACL, check_spaces, denial_detail, is_denied
-from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, parse_object_list
+from cognite_cdf_mcp.tools.params import (
+    DEFAULT_DRY_RUN,
+    MAX_SPACES_PER_REQUEST,
+    parse_object_list,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,40 @@ def _serialize_space(space: Any) -> dict[str, Any]:
         "createdTime": getattr(space, "created_time", None),
         "lastUpdatedTime": getattr(space, "last_updated_time", None),
     }
+
+
+def _chunks(items: list[Any], size: int = MAX_SPACES_PER_REQUEST) -> list[list[Any]]:
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _as_list(result: Any) -> list[Any]:
+    if result is None:
+        return []
+    if hasattr(result, "space") and not hasattr(result, "__iter__"):
+        return [result]
+    return list(result)
+
+
+def _partial_cognite_error(
+    exc: CogniteException,
+    *,
+    completed_batches: int,
+    space_ids: list[str],
+) -> str:
+    if isinstance(exc, CogniteAPIError):
+        logger.exception("CDF API error applying spaces")
+        body: dict[str, Any] = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+    else:
+        logger.exception("Cognite error applying spaces")
+        body = {"error": type(exc).__name__, "message": str(exc)}
+    if completed_batches:
+        body["completedBatches"] = completed_batches
+        body["items"] = [{"space": space_id} for space_id in space_ids]
+    return json.dumps(body)
 
 
 def _parse_space(item: dict[str, Any]) -> SpaceApply:
@@ -66,6 +104,10 @@ def apply_spaces(
     Defaults to ``DEFAULT_DRY_RUN`` (validates / retrieves existing; no write).
     Pass ``dry_run=false`` to apply. Requires ``dataModelsAcl:WRITE`` for an
     actual write.
+
+    Apply and retrieve-by-ids send at most ``MAX_SPACES_PER_REQUEST`` (100)
+    spaces per CDF call. If a later batch fails, the error includes
+    ``completedBatches`` and the space ids already applied.
     """
     space_ids: list[str] = []
     try:
@@ -80,13 +122,12 @@ def apply_spaces(
         space_ids = [item.space for item in applies]
 
         if dry_run:
-            existing = client.data_modeling.spaces.retrieve(spaces=[a.space for a in applies])
-            if existing is None:
-                existing_list: list[Any] = []
-            elif hasattr(existing, "space") and not hasattr(existing, "__iter__"):
-                existing_list = [existing]
-            else:
-                existing_list = list(existing)
+            existing_list: list[Any] = []
+            for batch in _chunks(applies):
+                existing = client.data_modeling.spaces.retrieve(
+                    spaces=[item.space for item in batch]
+                )
+                existing_list.extend(_as_list(existing))
             access = check_spaces(client, acl=MODELS_ACL, action="WRITE", spaces=space_ids)
             denied = is_denied(access)
             message = "Dry run only — spaces were not written."
@@ -106,13 +147,21 @@ def apply_spaces(
                 indent=2,
             )
 
-        result = client.data_modeling.spaces.apply(applies)
-        if result is None:
-            applied: list[Any] = []
-        elif hasattr(result, "space") and not hasattr(result, "__iter__"):
-            applied = [result]
-        else:
-            applied = list(result)
+        applied: list[Any] = []
+        succeeded: list[str] = []
+        completed_batches = 0
+        for batch in _chunks(applies):
+            try:
+                result = client.data_modeling.spaces.apply(batch)
+            except CogniteException as exc:
+                return _partial_cognite_error(
+                    exc,
+                    completed_batches=completed_batches,
+                    space_ids=succeeded,
+                )
+            completed_batches += 1
+            succeeded.extend(item.space for item in batch)
+            applied.extend(_as_list(result))
         return json.dumps(
             {
                 "dryRun": False,

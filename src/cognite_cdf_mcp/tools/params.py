@@ -14,6 +14,9 @@ DEFAULT_LIMIT = 100
 MAX_INSTANCE_WRITE_BATCH = 1000
 MAX_IN_FILTER_VALUES = 1000
 
+# CDF spaces apply, delete, and retrieve-by-ids accept at most 100 spaces per request.
+MAX_SPACES_PER_REQUEST = 100
+
 # Experimental safety: write tools preview by default. Flip to False when ready
 # for opt-out dry-run (and update README / tool descriptions accordingly).
 DEFAULT_DRY_RUN = True
