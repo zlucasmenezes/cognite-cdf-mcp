@@ -10,6 +10,7 @@ from cognite.client import CogniteClient
 from cognite.client.data_classes.data_modeling import SpaceApply
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.access import MODELS_ACL, check_spaces, denial_detail, is_denied
 from cognite_cdf_mcp.tools.params import (
     DEFAULT_DRY_RUN,
     MAX_SPACES_PER_REQUEST,
@@ -75,6 +76,16 @@ def _parse_space(item: dict[str, Any]) -> SpaceApply:
     )
 
 
+def _access_on_forbidden(
+    client: CogniteClient,
+    exc: CogniteException,
+    spaces: list[str],
+) -> dict[str, Any] | None:
+    if not isinstance(exc, CogniteAPIError) or getattr(exc, "code", None) != 403:
+        return None
+    return check_spaces(client, acl=MODELS_ACL, action="WRITE", spaces=spaces)
+
+
 def apply_spaces(
     client: CogniteClient,
     *,
@@ -98,6 +109,7 @@ def apply_spaces(
     spaces per CDF call. If a later batch fails, the error includes
     ``completedBatches`` and the space ids already applied.
     """
+    space_ids: list[str] = []
     try:
         items = parse_object_list(spaces)
         if not items:
@@ -107,6 +119,7 @@ def apply_spaces(
                 raise TypeError("each space item must be an object")
 
         applies = [_parse_space(item) for item in items]
+        space_ids = [item.space for item in applies]
 
         if dry_run:
             existing_list: list[Any] = []
@@ -115,15 +128,21 @@ def apply_spaces(
                     spaces=[item.space for item in batch]
                 )
                 existing_list.extend(_as_list(existing))
+            access = check_spaces(client, acl=MODELS_ACL, action="WRITE", spaces=space_ids)
+            denied = is_denied(access)
+            message = "Dry run only — spaces were not written."
+            if denied:
+                message = f"{message} {denial_detail(access)}"
             return json.dumps(
                 {
                     "dryRun": True,
-                    "wouldApply": True,
+                    "wouldApply": not denied,
                     "requested": len(applies),
                     "alreadyExist": len(existing_list),
+                    "access": access,
                     "payload": [a.dump(camel_case=True) for a in applies],
                     "existing": [_serialize_space(s) for s in existing_list],
-                    "message": "Dry run only — spaces were not written.",
+                    "message": message,
                 },
                 indent=2,
             )
@@ -156,13 +175,15 @@ def apply_spaces(
         return json.dumps({"error": "InvalidArgument", "message": str(exc)})
     except CogniteAPIError as exc:
         logger.exception("CDF API error applying spaces")
-        return json.dumps(
-            {
-                "error": "CogniteAPIError",
-                "code": getattr(exc, "code", None),
-                "message": str(exc),
-            }
-        )
+        body = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+        access = _access_on_forbidden(client, exc, space_ids)
+        if access is not None:
+            body["access"] = access
+        return json.dumps(body)
     except CogniteException as exc:
         logger.exception("Cognite error applying spaces")
         return json.dumps({"error": type(exc).__name__, "message": str(exc)})

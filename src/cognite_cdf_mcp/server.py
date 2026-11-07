@@ -15,6 +15,7 @@ from cognite_cdf_mcp import __version__
 from cognite_cdf_mcp.cdf.client import effective_environment, get_cognite_client
 from cognite_cdf_mcp.config import UnknownEnvironmentError, resolve_environment
 from cognite_cdf_mcp.tools import environments as _environments
+from cognite_cdf_mcp.tools.access import get_access as _get_access
 from cognite_cdf_mcp.tools.aggregate_instances import (
     aggregate_instances as _aggregate_instances,
 )
@@ -132,6 +133,31 @@ def use_environment(name: str) -> str:
     Does not call CDF (session-only; safe with write tools disabled).
     """
     return _environments.use_environment(name)
+
+
+@mcp.tool(title="Get access", annotations=READ_ANNOTATIONS)
+def get_access(
+    space: str | None = None,
+    acl: str | None = None,
+    action: str | None = None,
+    environment: str | None = None,
+) -> str:
+    """Summarize this token's capabilities in the selected environment.
+
+    Calls token inspect and keeps only capabilities for that project.
+    The token value is never returned. Other projects on the same token are ignored.
+
+    Without acl: every granted capability, including ones this server does not
+    use (for example agentsAcl RUN). Pass acl to inspect one capability; that
+    also reports missing READ and WRITE.
+    Without space: each action lists ``all``, explicit space ids, and any other
+    scope. With space: each action is true or false for that space.
+    ``action`` filters to one action such as READ, WRITE, or RUN.
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(environment, _get_access, space=space, acl=acl, action=action)
 
 
 # --- Reads -----------------------------------------------------------------

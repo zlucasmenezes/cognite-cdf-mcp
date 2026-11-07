@@ -11,6 +11,14 @@
 | `list_environments` | List `default` + every `CDF_PROJECT_<ALIAS>` environment (project/cluster, active flag; tokens never shown) |
 | `use_environment` | Set the session default environment (`default`, `dev`, `qa`, …) |
 
+### Access (token inspect, current project only)
+
+| Tool | Description |
+| --- | --- |
+| `get_access` | Summarize every capability granted in the selected environment (not only data modeling — for example `agentsAcl` `RUN`). Optional `space`, `acl`, and `action`. Tokens are never returned. Other projects on the token are ignored. |
+
+`apply_instances`, `delete_instances`, and `apply_spaces` dry runs call the same check. If the token lacks `WRITE` on a target space, `wouldApply` / `wouldDelete` is false and the response includes `access.missingSpaces`. A real write that returns 403 includes that `access` object too.
+
 Every CDF tool below also accepts an optional `environment` argument that overrides the session default for that call. Responses that are JSON objects include `environment` and `project`.
 
 ### Schema reads (`dataModelsAcl:READ`)

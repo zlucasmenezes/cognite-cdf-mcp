@@ -18,6 +18,12 @@ from cognite.client.data_classes.data_modeling import (
 )
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.access import (
+    INSTANCES_ACL,
+    check_spaces,
+    denial_detail,
+    is_denied,
+)
 from cognite_cdf_mcp.tools.instances_common import as_instance_list, serialize_instance
 from cognite_cdf_mcp.tools.params import (
     DEFAULT_DRY_RUN,
@@ -109,6 +115,16 @@ def _parse_edge(item: dict[str, Any]) -> EdgeApply:
     )
 
 
+def _access_on_forbidden(
+    client: CogniteClient,
+    exc: CogniteException,
+    spaces: list[str],
+) -> dict[str, Any] | None:
+    if not isinstance(exc, CogniteAPIError) or getattr(exc, "code", None) != 403:
+        return None
+    return check_spaces(client, acl=INSTANCES_ACL, action="WRITE", spaces=spaces)
+
+
 def _instance_ref(item: Any) -> dict[str, str]:
     return {"space": str(item.space), "externalId": str(item.external_id)}
 
@@ -134,6 +150,7 @@ def _apply_cognite_error(
     completed_batches: int,
     nodes: list[dict[str, str]],
     edges: list[dict[str, str]],
+    access: dict[str, Any] | None = None,
 ) -> str:
     if isinstance(exc, CogniteAPIError):
         logger.exception("CDF API error applying instances")
@@ -142,6 +159,8 @@ def _apply_cognite_error(
             "code": getattr(exc, "code", None),
             "message": str(exc),
         }
+        if access is not None:
+            body["access"] = access
     else:
         logger.exception("Cognite error applying instances")
         body = {"error": type(exc).__name__, "message": str(exc)}
@@ -210,6 +229,7 @@ def apply_instances(
     ``replace=true`` clears omitted properties to the container default or null.
     ``auto_create_direct_relations`` defaults to true and creates empty target nodes.
     """
+    instance_spaces: list[str] = []
     try:
         node_items = parse_object_list(nodes)
         edge_items = parse_object_list(edges)
@@ -219,6 +239,9 @@ def apply_instances(
         node_applies = [_parse_node(item) for item in node_items]
         edge_applies = [_parse_edge(item) for item in edge_items]
         write_batches = _combined_write_batches(node_applies, edge_applies)
+        instance_spaces = [node.space for node in node_applies] + [
+            edge.space for edge in edge_applies
+        ]
 
         if dry_run:
             existing_nodes: list[Any] = []
@@ -239,16 +262,26 @@ def apply_instances(
                         sources=sources,
                     )
                     existing_edges.extend(as_instance_list(retrieved_e))
+            access = check_spaces(
+                client,
+                acl=INSTANCES_ACL,
+                action="WRITE",
+                spaces=instance_spaces,
+            )
+            denied = is_denied(access)
             message = "Dry run only — instances were not written."
             if replace:
                 message += " replace is not simulated; existing shows current properties."
+            if denied:
+                message = f"{message} {denial_detail(access)}"
             return json.dumps(
                 {
                     "dryRun": True,
-                    "wouldApply": True,
+                    "wouldApply": not denied,
                     "replace": replace,
                     "batches": len(write_batches),
                     "maxBatchSize": MAX_INSTANCE_WRITE_BATCH,
+                    "access": access,
                     "nodes": {
                         "requested": len(node_applies),
                         "alreadyExist": len(existing_nodes),
@@ -285,6 +318,7 @@ def apply_instances(
                     completed_batches=completed_batches,
                     nodes=applied_node_ids,
                     edges=applied_edge_ids,
+                    access=_access_on_forbidden(client, exc, instance_spaces),
                 )
             completed_batches += 1
             applied_node_ids.extend(_instance_ref(node) for node in nodes_batch)
@@ -314,13 +348,15 @@ def apply_instances(
         return json.dumps({"error": "InvalidArgument", "message": str(exc)})
     except CogniteAPIError as exc:
         logger.exception("CDF API error applying instances")
-        return json.dumps(
-            {
-                "error": "CogniteAPIError",
-                "code": getattr(exc, "code", None),
-                "message": str(exc),
-            }
-        )
+        body = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+        access = _access_on_forbidden(client, exc, instance_spaces)
+        if access is not None:
+            body["access"] = access
+        return json.dumps(body)
     except CogniteException as exc:
         logger.exception("Cognite error applying instances")
         return json.dumps({"error": type(exc).__name__, "message": str(exc)})
