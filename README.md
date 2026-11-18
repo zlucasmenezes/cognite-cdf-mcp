@@ -17,7 +17,7 @@
 | --- | --- |
 | `get_access` | Summarize every capability granted in the selected environment (not only data modeling — for example `agentsAcl` `RUN`). Optional `space`, `acl`, and `action`. Tokens are never returned. Other projects on the token are ignored. |
 
-`apply_instances`, `delete_instances`, and `apply_spaces` dry runs call the same check. If the token lacks `WRITE` on a target space, `wouldApply` / `wouldDelete` is false and the response includes `access.missingSpaces`. A real write that returns 403 includes that `access` object too.
+Schema and instance write dry runs (`apply_*` / `delete_*`) call the same check. If the token lacks `WRITE` on a target space, `wouldApply` / `wouldDelete` is false and the response includes `access.missingSpaces`. A real write that returns 403 (including mid-batch failures after earlier success) includes that `access` object too.
 
 Every CDF tool below also accepts an optional `environment` argument that overrides the session default for that call. Responses that are JSON objects include `environment` and `project`.
 
