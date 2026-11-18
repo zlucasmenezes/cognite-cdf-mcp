@@ -23,8 +23,10 @@ MAX_SPACES_PER_REQUEST = 100
 # https://api-docs.cognite.com/20230101/tag/Data-models/operation/createDataModels
 MAX_SCHEMA_PER_REQUEST = 100
 
-# CDF container index delete accepts at most 10 indexes per request.
+# CDF allows at most 10 indexes per container; index delete accepts at most 10 per request.
+# https://docs.cognite.com/cdf/dm/dm_reference/dm_limits_and_restrictions
 # https://docs.cognite.com/20230101/containers/delete-indexes-from-containers
+MAX_INDEXES_PER_CONTAINER = 10
 MAX_CONTAINER_INDEX_DELETE = 10
 
 # Experimental safety: write tools preview by default. Flip to False when ready
