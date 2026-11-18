@@ -39,13 +39,34 @@ def test_server_imports_and_registers_core_tools() -> None:
     # Write tools share DEFAULT_DRY_RUN (experimental safety switch).
     for name in (
         "apply_spaces",
+        "apply_containers",
+        "apply_views",
+        "apply_data_models",
         "delete_spaces",
+        "delete_container_indexes",
         "apply_instances",
         "delete_instances",
         "delete_view",
     ):
         props = tools[name].parameters["properties"]
         assert props["dry_run"].get("default") is DEFAULT_DRY_RUN, name
+        assert "environment" in props, name
+
+    for name in ("apply_containers", "apply_views", "apply_data_models"):
+        doc = tools[name].description or ""
+        assert "100" in doc, name
+        assert "completedBatches" in doc, name
+        assert tools[name].annotations.destructive_hint is False, name
+
+    apply_containers_doc = tools["apply_containers"].description or ""
+    assert "indexes" in apply_containers_doc
+    assert "delete_container_indexes" in apply_containers_doc
+
+    delete_indexes = tools["delete_container_indexes"]
+    delete_indexes_doc = delete_indexes.description or ""
+    assert "10" in delete_indexes_doc
+    assert "completedBatches" in delete_indexes_doc
+    assert delete_indexes.annotations.destructive_hint is True
 
     apply_doc = tools["apply_instances"].description or ""
     assert "replace=true" in apply_doc
