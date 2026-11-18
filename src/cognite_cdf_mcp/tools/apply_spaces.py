@@ -48,6 +48,7 @@ def _partial_cognite_error(
     *,
     completed_batches: int,
     space_ids: list[str],
+    access: dict[str, Any] | None = None,
 ) -> str:
     if isinstance(exc, CogniteAPIError):
         logger.exception("CDF API error applying spaces")
@@ -62,6 +63,8 @@ def _partial_cognite_error(
     if completed_batches:
         body["completedBatches"] = completed_batches
         body["items"] = [{"space": space_id} for space_id in space_ids]
+    if access is not None:
+        body["access"] = access
     return json.dumps(body)
 
 
@@ -158,6 +161,7 @@ def apply_spaces(
                     exc,
                     completed_batches=completed_batches,
                     space_ids=succeeded,
+                    access=_access_on_forbidden(client, exc, space_ids),
                 )
             completed_batches += 1
             succeeded.extend(item.space for item in batch)

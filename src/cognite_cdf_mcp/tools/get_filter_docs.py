@@ -6,8 +6,12 @@ import json
 
 from cognite_cdf_mcp.tools.params import (
     DEFAULT_LIMIT,
+    MAX_CONTAINER_INDEX_DELETE,
     MAX_IN_FILTER_VALUES,
+    MAX_INDEXES_PER_CONTAINER,
     MAX_INSTANCE_WRITE_BATCH,
+    MAX_SCHEMA_PER_REQUEST,
+    MAX_SPACES_PER_REQUEST,
 )
 
 FILTER_DOCS: dict = {
@@ -58,6 +62,10 @@ FILTER_DOCS: dict = {
         "defaultResultLimit": DEFAULT_LIMIT,
         "inFilterMaxValues": MAX_IN_FILTER_VALUES,
         "applyDeleteMaxItemsPerCall": MAX_INSTANCE_WRITE_BATCH,
+        "schemaApplyDeleteMaxItemsPerCall": MAX_SCHEMA_PER_REQUEST,
+        "spacesApplyDeleteMaxItemsPerCall": MAX_SPACES_PER_REQUEST,
+        "indexesPerContainerMax": MAX_INDEXES_PER_CONTAINER,
+        "containerIndexDeleteMaxPerCall": MAX_CONTAINER_INDEX_DELETE,
         "notes": [
             f"in.values accepts at most {MAX_IN_FILTER_VALUES} entries; "
             "this MCP rejects larger filters early. Split into batches and merge.",
@@ -65,6 +73,12 @@ FILTER_DOCS: dict = {
             f"at most {MAX_INSTANCE_WRITE_BATCH} items per CDF call. "
             "delete_instances chunks one id list to at most "
             f"{MAX_INSTANCE_WRITE_BATCH} ids per CDF call.",
+            "Schema apply/delete (`apply_containers` / `apply_views` / "
+            "`apply_data_models` / `delete_containers` / `delete_data_models` / "
+            f"`delete_view`) send at most {MAX_SCHEMA_PER_REQUEST} items per CDF "
+            f"call; spaces tools use {MAX_SPACES_PER_REQUEST}. "
+            f"Containers allow at most {MAX_INDEXES_PER_CONTAINER} indexes; "
+            f"`delete_container_indexes` chunks to {MAX_CONTAINER_INDEX_DELETE}.",
             "Only query_instances and schema list_* tools return nextCursor. "
             "search_instances and aggregate_instances do not. Page with "
             "nextCursor instead of raising limits aggressively. Exceeding CDF "

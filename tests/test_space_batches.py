@@ -109,6 +109,9 @@ def test_apply_spaces_dry_run_chunks_retrieve() -> None:
 
 def test_delete_spaces_chunks_and_reports_later_failure() -> None:
     client = MagicMock()
+    client.data_modeling.spaces.retrieve.side_effect = lambda spaces: [
+        _space_obj(space_id) for space_id in spaces
+    ]
     client.data_modeling.spaces.delete.side_effect = [
         [f"s-{i}" for i in range(MAX_SPACES_PER_REQUEST)],
         CogniteAPIError("delete failed", 409),
@@ -132,6 +135,7 @@ def test_delete_spaces_chunks_and_reports_later_failure() -> None:
 def test_delete_spaces_dry_run_keeps_dependency_warning_and_chunks() -> None:
     client = MagicMock()
     client.data_modeling.spaces.retrieve.return_value = []
+    client.iam.token.inspect.return_value = SimpleNamespace(capabilities=[])
     out = json.loads(
         delete_spaces(
             client,
@@ -140,6 +144,26 @@ def test_delete_spaces_dry_run_keeps_dependency_warning_and_chunks() -> None:
         )
     )
     assert out["dryRun"] is True
+    assert out["wouldDelete"] is False
+    assert "access" in out
     assert "Dependency conflicts are not validated in dry run." in out["message"]
     assert client.data_modeling.spaces.retrieve.call_count == 2
     assert client.data_modeling.spaces.delete.call_count == 0
+
+
+def test_delete_spaces_skips_missing_on_real_delete() -> None:
+    client = MagicMock()
+    client.data_modeling.spaces.retrieve.return_value = [_space_obj("s-0")]
+    client.data_modeling.spaces.delete.side_effect = lambda spaces: list(spaces)
+    out = json.loads(
+        delete_spaces(
+            client,
+            spaces=[{"space": "s-0"}, {"space": "s-missing"}],
+            dry_run=False,
+        )
+    )
+    assert out["deleted"] is True
+    assert out["count"] == 1
+    assert out["items"] == [{"space": "s-0"}]
+    assert out["missing"] == ["s-missing"]
+    assert client.data_modeling.spaces.delete.call_args.kwargs["spaces"] == ["s-0"]

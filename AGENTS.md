@@ -17,7 +17,11 @@ Pagination cursors are project-scoped. After you switch project, run the query a
 
 ## Writes
 
-Write tools (`apply_*` / `delete_*`) default to `dry_run=true` (preview only). Pass `dry_run=false` only when you intend to mutate CDF. Read `environment` and `project` on the preview before a real write. Schema dry-runs (`apply_spaces`, `delete_spaces`, `delete_view`) only need `READ`.
+Write tools (`apply_*` / `delete_*`) default to `dry_run=true` (preview only). Pass `dry_run=false` only when you intend to mutate CDF. Read `environment` and `project` on the preview before a real write. Schema dry-runs (`apply_spaces`, `apply_containers`, `apply_views`, `apply_data_models`, `delete_spaces`, `delete_containers`, `delete_data_models`, `delete_container_indexes`, `delete_view`) only need `READ`.
+
+Schema apply (`apply_spaces`, `apply_containers`, `apply_views`, `apply_data_models`) sends at most 100 items per CDF call. Longer lists run sequentially. If a later batch fails, earlier batches may already be written; the error includes `completedBatches` and the ids already applied. For `apply_data_models`, pass bare view refs (`space` / `externalId` / `version`) unless you intentionally inline a full view definition.
+
+Container indexes are created through `apply_containers` (`indexes` map, btree or inverted, at most 10 per container). They cannot be edited in place. To change an index, `delete_container_indexes` (≤10 ids per CDF call) and then apply the container again with the new definition.
 
 `apply_instances` writes one sequence: all nodes first, then all edges. Each CDF call sends at most 1000 nodes and edges combined ([Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances)). Calls run one after another. If a later batch fails, earlier batches may already be written; the error JSON includes `completedBatches` and the space/externalId values already applied.
 

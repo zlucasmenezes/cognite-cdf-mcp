@@ -17,6 +17,18 @@ MAX_IN_FILTER_VALUES = 1000
 # CDF spaces apply, delete, and retrieve-by-ids accept at most 100 spaces per request.
 MAX_SPACES_PER_REQUEST = 100
 
+# CDF views, containers, and data models apply/retrieve-by-ids accept at most 100 per request.
+# https://api-docs.cognite.com/20230101/tag/Views/operation/ApplyViews
+# https://api-docs.cognite.com/20230101/tag/Containers/operation/ApplyContainers
+# https://api-docs.cognite.com/20230101/tag/Data-models/operation/createDataModels
+MAX_SCHEMA_PER_REQUEST = 100
+
+# CDF allows at most 10 indexes per container; index delete accepts at most 10 per request.
+# https://docs.cognite.com/cdf/dm/dm_reference/dm_limits_and_restrictions
+# https://docs.cognite.com/20230101/containers/delete-indexes-from-containers
+MAX_INDEXES_PER_CONTAINER = 10
+MAX_CONTAINER_INDEX_DELETE = 10
+
 # Experimental safety: write tools preview by default. Flip to False when ready
 # for opt-out dry-run (and update README / tool descriptions accordingly).
 DEFAULT_DRY_RUN = True

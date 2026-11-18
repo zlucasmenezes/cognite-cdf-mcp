@@ -36,16 +36,64 @@ def test_server_imports_and_registers_core_tools() -> None:
     assert filter_docs.read_only_hint is True
     assert tools["query_instances"].annotations.open_world_hint is True
 
+    # Schema write tools added on feat/schema-writes must stay registered.
+    for name in (
+        "apply_containers",
+        "apply_views",
+        "apply_data_models",
+        "delete_container_indexes",
+        "delete_containers",
+        "delete_data_models",
+    ):
+        assert name in tools, name
+
     # Write tools share DEFAULT_DRY_RUN (experimental safety switch).
     for name in (
         "apply_spaces",
+        "apply_containers",
+        "apply_views",
+        "apply_data_models",
         "delete_spaces",
+        "delete_containers",
+        "delete_data_models",
+        "delete_container_indexes",
         "apply_instances",
         "delete_instances",
         "delete_view",
     ):
         props = tools[name].parameters["properties"]
         assert props["dry_run"].get("default") is DEFAULT_DRY_RUN, name
+        assert "environment" in props, name
+
+    for name in ("apply_containers", "apply_views", "apply_data_models"):
+        doc = tools[name].description or ""
+        assert "100" in doc, name
+        assert "completedBatches" in doc, name
+        assert tools[name].annotations.destructive_hint is False, name
+
+    apply_containers_doc = tools["apply_containers"].description or ""
+    assert "indexes" in apply_containers_doc
+    assert "delete_container_indexes" in apply_containers_doc
+
+    delete_indexes = tools["delete_container_indexes"]
+    delete_indexes_doc = delete_indexes.description or ""
+    assert "10" in delete_indexes_doc
+    assert "completedBatches" in delete_indexes_doc
+    assert delete_indexes.annotations.destructive_hint is True
+
+    delete_containers = tools["delete_containers"]
+    delete_containers_doc = delete_containers.description or ""
+    assert "100" in delete_containers_doc
+    assert "completedBatches" in delete_containers_doc
+    assert "does not validate dependency conflicts" in " ".join(delete_containers_doc.split())
+    assert delete_containers.annotations.destructive_hint is True
+
+    delete_data_models = tools["delete_data_models"]
+    delete_data_models_doc = delete_data_models.description or ""
+    assert "100" in delete_data_models_doc
+    assert "completedBatches" in delete_data_models_doc
+    assert "does not delete its referenced views" in " ".join(delete_data_models_doc.split())
+    assert delete_data_models.annotations.destructive_hint is True
 
     apply_doc = tools["apply_instances"].description or ""
     assert "replace=true" in apply_doc
@@ -66,3 +114,9 @@ def test_server_imports_and_registers_core_tools() -> None:
         assert "completedBatches" in doc, name
     delete_spaces_doc = " ".join((tools["delete_spaces"].description or "").split())
     assert "does not validate dependency conflicts" in delete_spaces_doc
+    assert "skip ids that do not exist" in delete_spaces_doc
+    assert "missing" in delete_spaces_doc
+
+    delete_view_doc = " ".join((tools["delete_view"].description or "").split())
+    assert "wouldDelete" in delete_view_doc
+    assert "access" in delete_view_doc

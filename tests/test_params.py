@@ -52,9 +52,21 @@ def test_parse_filter_validates_nested_in() -> None:
 
 
 def test_get_filter_docs_includes_limits_and_search_guidance() -> None:
+    from cognite_cdf_mcp.tools.params import (
+        MAX_CONTAINER_INDEX_DELETE,
+        MAX_INDEXES_PER_CONTAINER,
+        MAX_SCHEMA_PER_REQUEST,
+        MAX_SPACES_PER_REQUEST,
+    )
+
     docs = json.loads(get_filter_docs())
     assert docs["limits"]["inFilterMaxValues"] == MAX_IN_FILTER_VALUES
     assert docs["limits"]["applyDeleteMaxItemsPerCall"] == MAX_INSTANCE_WRITE_BATCH
+    assert docs["limits"]["schemaApplyDeleteMaxItemsPerCall"] == MAX_SCHEMA_PER_REQUEST
+    assert docs["limits"]["spacesApplyDeleteMaxItemsPerCall"] == MAX_SPACES_PER_REQUEST
+    assert docs["limits"]["indexesPerContainerMax"] == MAX_INDEXES_PER_CONTAINER
+    assert docs["limits"]["containerIndexDeleteMaxPerCall"] == MAX_CONTAINER_INDEX_DELETE
+    assert "delete_container_indexes" in " ".join(docs["limits"]["notes"])
     assert "searchThenQuery" in docs["searchVsQuery"]
     assert "operator=AND" in docs["searchVsQuery"]["search_instances"]
     assert "docs.cognite.com" in docs["docs"]["searchFeatures"]

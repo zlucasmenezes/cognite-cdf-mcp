@@ -19,8 +19,16 @@ from cognite_cdf_mcp.tools.access import get_access as _get_access
 from cognite_cdf_mcp.tools.aggregate_instances import (
     aggregate_instances as _aggregate_instances,
 )
+from cognite_cdf_mcp.tools.apply_containers import apply_containers as _apply_containers
+from cognite_cdf_mcp.tools.apply_data_models import apply_data_models as _apply_data_models
 from cognite_cdf_mcp.tools.apply_instances import apply_instances as _apply_instances
 from cognite_cdf_mcp.tools.apply_spaces import apply_spaces as _apply_spaces
+from cognite_cdf_mcp.tools.apply_views import apply_views as _apply_views
+from cognite_cdf_mcp.tools.delete_container_indexes import (
+    delete_container_indexes as _delete_container_indexes,
+)
+from cognite_cdf_mcp.tools.delete_containers import delete_containers as _delete_containers
+from cognite_cdf_mcp.tools.delete_data_models import delete_data_models as _delete_data_models
 from cognite_cdf_mcp.tools.delete_instances import delete_instances as _delete_instances
 from cognite_cdf_mcp.tools.delete_spaces import delete_spaces as _delete_spaces
 from cognite_cdf_mcp.tools.delete_view import delete_view as _delete_view
@@ -569,6 +577,163 @@ def apply_spaces(
     return _call(environment, _apply_spaces, spaces=spaces, dry_run=dry_run)
 
 
+@mcp.tool(title="Apply containers", annotations=UPSERT_ANNOTATIONS)
+def apply_containers(
+    containers: list[dict[str, Any]] | str,
+    dry_run: bool = DEFAULT_DRY_RUN,
+    environment: str | None = None,
+) -> str:
+    """Create or update containers (upsert).
+
+    Requires dataModelsAcl:WRITE for an actual apply.
+    Defaults to dry_run=true (preview only); pass dry_run=false to write.
+    At most 100 containers are sent per CDF request (apply and retrieve-by-ids).
+    Longer lists run sequentially. If a later batch fails, the error includes
+    completedBatches and the container ids already applied.
+    New indexes go in the container indexes map (btree/inverted). Existing indexes
+    cannot be edited in place — use delete_container_indexes, then apply again.
+    containers example: [{"space": "sp_x", "externalId": "Asset", "usedFor": "node",
+    "properties": {"name": {"type": {"type": "text", "list": false}, "nullable": true}},
+    "indexes": {"nameIndex": {"indexType": "btree", "properties": ["name"]}}}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(environment, _apply_containers, containers=containers, dry_run=dry_run)
+
+
+@mcp.tool(title="Delete container indexes", annotations=WRITE_ANNOTATIONS)
+def delete_container_indexes(
+    indexes: list[dict[str, Any]] | str,
+    dry_run: bool = DEFAULT_DRY_RUN,
+    environment: str | None = None,
+) -> str:
+    """Delete one or more indexes from containers.
+
+    Requires dataModelsAcl:WRITE for an actual delete.
+    Defaults to dry_run=true (preview only); pass dry_run=false to delete.
+    At most 10 indexes are sent per CDF request. Longer lists run sequentially.
+    If a later batch fails, the error includes completedBatches and the index ids
+    already deleted. Indexes cannot be edited in place — delete then apply a
+    replacement via apply_containers.
+    indexes example: [{"space": "sp_x", "containerExternalId": "Asset",
+    "identifier": "nameIndex"}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(
+        environment,
+        _delete_container_indexes,
+        indexes=indexes,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(title="Delete containers", annotations=WRITE_ANNOTATIONS)
+def delete_containers(
+    containers: list[dict[str, Any]] | str,
+    dry_run: bool = DEFAULT_DRY_RUN,
+    environment: str | None = None,
+) -> str:
+    """Delete one or more containers by space/externalId.
+
+    Requires dataModelsAcl:WRITE for an actual delete.
+    Defaults to dry_run=true (preview only); pass dry_run=false to delete.
+    At most 100 containers are sent per CDF request (delete and retrieve-by-ids).
+    Longer lists run sequentially. Real deletes skip ids that do not exist and
+    report them in missing (NotFound when none exist). If a later batch fails,
+    the error includes completedBatches and the container ids already deleted.
+    Dry run does not validate dependency conflicts (for example views still
+    referencing the container).
+    containers example: [{"space": "sp_x", "externalId": "Asset"}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(
+        environment,
+        _delete_containers,
+        containers=containers,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(title="Delete data models", annotations=WRITE_ANNOTATIONS)
+def delete_data_models(
+    data_models: list[dict[str, Any]] | str,
+    dry_run: bool = DEFAULT_DRY_RUN,
+    environment: str | None = None,
+) -> str:
+    """Delete one or more data models by space/externalId/version.
+
+    Requires dataModelsAcl:WRITE for an actual delete.
+    Defaults to dry_run=true (preview only); pass dry_run=false to delete.
+    At most 100 data models are sent per CDF request (delete and retrieve-by-ids).
+    Longer lists run sequentially. Real deletes skip ids that do not exist and
+    report them in missing (NotFound when none exist). If a later batch fails,
+    the error includes completedBatches and the data model ids already deleted.
+    Deleting a data model does not delete its referenced views. Dry run does not
+    validate dependency conflicts.
+    data_models example: [{"space": "sp_x", "externalId": "Plant", "version": "v1"}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(
+        environment,
+        _delete_data_models,
+        data_models=data_models,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(title="Apply views", annotations=UPSERT_ANNOTATIONS)
+def apply_views(
+    views: list[dict[str, Any]] | str,
+    dry_run: bool = DEFAULT_DRY_RUN,
+    environment: str | None = None,
+) -> str:
+    """Create or update views (upsert).
+
+    Requires dataModelsAcl:WRITE for an actual apply.
+    Defaults to dry_run=true (preview only); pass dry_run=false to write.
+    At most 100 views are sent per CDF request (apply and retrieve-by-ids).
+    Longer lists run sequentially. If a later batch fails, the error includes
+    completedBatches and the view ids already applied.
+    views example: [{"space": "sp_x", "externalId": "Asset", "version": "v1",
+    "properties": {"name": {"container": {"space": "sp_x", "externalId": "Asset"},
+    "containerPropertyIdentifier": "name"}}}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(environment, _apply_views, views=views, dry_run=dry_run)
+
+
+@mcp.tool(title="Apply data models", annotations=UPSERT_ANNOTATIONS)
+def apply_data_models(
+    data_models: list[dict[str, Any]] | str,
+    dry_run: bool = DEFAULT_DRY_RUN,
+    environment: str | None = None,
+) -> str:
+    """Create or update data models (upsert).
+
+    Requires dataModelsAcl:WRITE for an actual apply.
+    Defaults to dry_run=true (preview only); pass dry_run=false to write.
+    At most 100 data models are sent per CDF request (apply and retrieve-by-ids).
+    Longer lists run sequentially. If a later batch fails, the error includes
+    completedBatches and the data model ids already applied.
+    Bare view refs stay references; include properties only for inline view applies.
+    data_models example: [{"space": "sp_x", "externalId": "Plant", "version": "v1",
+    "views": [{"space": "sp_x", "externalId": "Asset", "version": "v1"}]}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(environment, _apply_data_models, data_models=data_models, dry_run=dry_run)
+
+
 @mcp.tool(title="Delete spaces", annotations=WRITE_ANNOTATIONS)
 def delete_spaces(
     spaces: list[str | dict[str, Any]] | str,
@@ -580,9 +745,10 @@ def delete_spaces(
     Requires dataModelsAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only); pass dry_run=false to delete.
     At most 100 spaces are sent per CDF request (delete and retrieve-by-ids).
-    Longer lists run sequentially. If a later batch fails, the error includes
-    completedBatches and the space ids already deleted. Dry run does not
-    validate dependency conflicts.
+    Longer lists run sequentially. Real deletes skip ids that do not exist and
+    report them in missing (NotFound when none exist). If a later batch fails,
+    the error includes completedBatches and the space ids already deleted.
+    Dry run does not validate dependency conflicts.
     spaces example: ["sp_x"] or [{"space": "sp_x"}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -662,7 +828,9 @@ def delete_view(
 
     Requires dataModelsAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only; dependency conflicts are not validated).
+    Dry run reports access and sets wouldDelete false when WRITE is missing.
     Pass dry_run=false to permanently remove the view version from the project.
+    A 403 response includes the access object from token inspect.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).
