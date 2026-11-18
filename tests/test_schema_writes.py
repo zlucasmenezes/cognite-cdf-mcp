@@ -377,6 +377,66 @@ def test_delete_containers_skips_missing_on_real_delete() -> None:
     assert deleted_ids == [ContainerId("sp_x", "Asset")]
 
 
+def test_delete_data_models_skips_missing_on_real_delete() -> None:
+    client = MagicMock()
+    client.data_modeling.data_models.retrieve.return_value = [
+        _schema_obj("sp_x", "Plant", version="v1")
+    ]
+    client.data_modeling.data_models.delete.side_effect = lambda ids: list(ids)
+    out = json.loads(
+        delete_data_models(
+            client,
+            data_models=[
+                {"space": "sp_x", "externalId": "Plant", "version": "v1"},
+                {"space": "sp_x", "externalId": "Missing", "version": "v1"},
+            ],
+            dry_run=False,
+        )
+    )
+    assert out["deleted"] is True
+    assert out["count"] == 1
+    assert out["items"] == [{"space": "sp_x", "externalId": "Plant", "version": "v1"}]
+    assert out["missing"] == [{"space": "sp_x", "externalId": "Missing", "version": "v1"}]
+    deleted_ids = client.data_modeling.data_models.delete.call_args.kwargs["ids"]
+    assert deleted_ids == [DataModelId("sp_x", "Plant", "v1")]
+
+
+def test_delete_container_indexes_skips_missing_on_real_delete() -> None:
+    client = MagicMock()
+    existing = _schema_obj("sp_x", "Asset")
+    existing.indexes = {"nameIndex": object()}
+    client.data_modeling.containers.retrieve.return_value = [existing]
+    client.data_modeling.containers.delete_indexes.side_effect = lambda ids: list(ids)
+    out = json.loads(
+        delete_container_indexes(
+            client,
+            indexes=[
+                {
+                    "space": "sp_x",
+                    "containerExternalId": "Asset",
+                    "identifier": "nameIndex",
+                },
+                {
+                    "space": "sp_x",
+                    "containerExternalId": "Asset",
+                    "identifier": "gone",
+                },
+            ],
+            dry_run=False,
+        )
+    )
+    assert out["deleted"] is True
+    assert out["count"] == 1
+    assert out["items"] == [
+        {"space": "sp_x", "containerExternalId": "Asset", "identifier": "nameIndex"}
+    ]
+    assert out["missing"] == [
+        {"space": "sp_x", "containerExternalId": "Asset", "identifier": "gone"}
+    ]
+    deleted = client.data_modeling.containers.delete_indexes.call_args.args[0]
+    assert deleted == [(ContainerId("sp_x", "Asset"), "nameIndex")]
+
+
 def test_delete_data_models_chunks_at_100() -> None:
     client = MagicMock()
     client.data_modeling.data_models.retrieve.side_effect = lambda ids, inline_views=False: [
@@ -500,6 +560,27 @@ def test_delete_containers_partial_403_includes_access() -> None:
     client.iam.token.inspect.return_value = SimpleNamespace(capabilities=[])
     items = [{"space": "sp_x", "externalId": f"c-{i}"} for i in range(MAX_SCHEMA_PER_REQUEST + 1)]
     out = json.loads(delete_containers(client, containers=items, dry_run=False))
+    assert out["error"] == "CogniteAPIError"
+    assert out["code"] == 403
+    assert out["completedBatches"] == 1
+    assert out["access"]["allowed"] is False
+    assert "sp_x" in out["access"]["missingSpaces"]
+
+
+def test_apply_containers_partial_403_includes_access() -> None:
+    client = MagicMock()
+    client.data_modeling.containers.apply.side_effect = [
+        [_schema_obj("sp_x", f"c-{i}") for i in range(MAX_SCHEMA_PER_REQUEST)],
+        CogniteAPIError("forbidden", 403),
+    ]
+    client.iam.token.inspect.return_value = SimpleNamespace(capabilities=[])
+    out = json.loads(
+        apply_containers(
+            client,
+            containers=[_container(f"c-{i}") for i in range(MAX_SCHEMA_PER_REQUEST + 1)],
+            dry_run=False,
+        )
+    )
     assert out["error"] == "CogniteAPIError"
     assert out["code"] == 403
     assert out["completedBatches"] == 1

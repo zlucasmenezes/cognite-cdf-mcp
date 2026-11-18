@@ -114,3 +114,9 @@ def test_server_imports_and_registers_core_tools() -> None:
         assert "completedBatches" in doc, name
     delete_spaces_doc = " ".join((tools["delete_spaces"].description or "").split())
     assert "does not validate dependency conflicts" in delete_spaces_doc
+    assert "skip ids that do not exist" in delete_spaces_doc
+    assert "missing" in delete_spaces_doc
+
+    delete_view_doc = " ".join((tools["delete_view"].description or "").split())
+    assert "wouldDelete" in delete_view_doc
+    assert "access" in delete_view_doc

@@ -16,6 +16,8 @@ from cognite_cdf_mcp.tools.apply_instances import apply_instances
 from cognite_cdf_mcp.tools.apply_spaces import apply_spaces
 from cognite_cdf_mcp.tools.delete_containers import delete_containers
 from cognite_cdf_mcp.tools.delete_instances import delete_instances
+from cognite_cdf_mcp.tools.delete_spaces import delete_spaces
+from cognite_cdf_mcp.tools.delete_view import delete_view
 
 
 def _cap(
@@ -302,3 +304,52 @@ def test_delete_containers_dry_run_denies_missing_write() -> None:
     assert out["wouldDelete"] is False
     assert out["access"]["missingSpaces"] == ["sp_x"]
     assert client.data_modeling.containers.delete.call_count == 0
+
+
+def test_delete_spaces_dry_run_denies_missing_write() -> None:
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client.data_modeling.spaces.retrieve.return_value = [
+        SimpleNamespace(
+            space="sp_x",
+            name=None,
+            description=None,
+            is_global=None,
+            created_time=None,
+            last_updated_time=None,
+        )
+    ]
+    out = json.loads(delete_spaces(client, spaces=["sp_x"], dry_run=True))
+    assert out["wouldDelete"] is False
+    assert out["access"]["acl"] == "dataModelsAcl"
+    assert out["access"]["missingSpaces"] == ["sp_x"]
+    assert client.data_modeling.spaces.delete.call_count == 0
+
+
+def test_delete_view_dry_run_denies_missing_write() -> None:
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client.data_modeling.views.retrieve.return_value = [
+        SimpleNamespace(
+            space="sp_x",
+            external_id="Asset",
+            version="v1",
+            name="Asset",
+            description=None,
+        )
+    ]
+    out = json.loads(
+        delete_view(client, space="sp_x", external_id="Asset", version="v1", dry_run=True)
+    )
+    assert out["wouldDelete"] is False
+    assert out["access"]["missingSpaces"] == ["sp_x"]
+    assert client.data_modeling.views.delete.call_count == 0
+
+
+def test_delete_view_403_includes_access() -> None:
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client.data_modeling.views.delete.side_effect = CogniteAPIError("forbidden", 403)
+    out = json.loads(
+        delete_view(client, space="sp_x", external_id="Asset", version="v1", dry_run=False)
+    )
+    assert out["code"] == 403
+    assert out["access"]["allowed"] is False
+    assert out["access"]["missingSpaces"] == ["sp_x"]
