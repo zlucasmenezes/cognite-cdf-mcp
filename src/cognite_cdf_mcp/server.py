@@ -27,6 +27,7 @@ from cognite_cdf_mcp.tools.apply_views import apply_views as _apply_views
 from cognite_cdf_mcp.tools.delete_container_indexes import (
     delete_container_indexes as _delete_container_indexes,
 )
+from cognite_cdf_mcp.tools.delete_containers import delete_containers as _delete_containers
 from cognite_cdf_mcp.tools.delete_instances import delete_instances as _delete_instances
 from cognite_cdf_mcp.tools.delete_spaces import delete_spaces as _delete_spaces
 from cognite_cdf_mcp.tools.delete_view import delete_view as _delete_view
@@ -624,6 +625,33 @@ def delete_container_indexes(
         environment,
         _delete_container_indexes,
         indexes=indexes,
+        dry_run=dry_run,
+    )
+
+
+@mcp.tool(title="Delete containers", annotations=WRITE_ANNOTATIONS)
+def delete_containers(
+    containers: list[dict[str, Any]] | str,
+    dry_run: bool = DEFAULT_DRY_RUN,
+    environment: str | None = None,
+) -> str:
+    """Delete one or more containers by space/externalId.
+
+    Requires dataModelsAcl:WRITE for an actual delete.
+    Defaults to dry_run=true (preview only); pass dry_run=false to delete.
+    At most 100 containers are sent per CDF request (delete and retrieve-by-ids).
+    Longer lists run sequentially. If a later batch fails, the error includes
+    completedBatches and the container ids already deleted. Dry run does not
+    validate dependency conflicts (for example views still referencing the container).
+    containers example: [{"space": "sp_x", "externalId": "Asset"}]
+
+    environment: optional alias from list_environments (default: session environment;
+    see use_environment).
+    """
+    return _call(
+        environment,
+        _delete_containers,
+        containers=containers,
         dry_run=dry_run,
     )
 
