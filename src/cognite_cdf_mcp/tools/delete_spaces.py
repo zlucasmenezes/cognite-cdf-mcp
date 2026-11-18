@@ -9,6 +9,7 @@ from typing import Any
 from cognite.client import CogniteClient
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
+from cognite_cdf_mcp.tools.access import MODELS_ACL, check_spaces
 from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, MAX_SPACES_PER_REQUEST
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ def _partial_cognite_error(
     *,
     completed_batches: int,
     space_ids: list[str],
+    access: dict[str, Any] | None = None,
 ) -> str:
     if isinstance(exc, CogniteAPIError):
         logger.exception("CDF API error deleting spaces")
@@ -66,7 +68,19 @@ def _partial_cognite_error(
     if completed_batches:
         body["completedBatches"] = completed_batches
         body["items"] = [{"space": space_id} for space_id in space_ids]
+    if access is not None:
+        body["access"] = access
     return json.dumps(body)
+
+
+def _access_on_forbidden(
+    client: CogniteClient,
+    exc: CogniteException,
+    spaces: list[str],
+) -> dict[str, Any] | None:
+    if not isinstance(exc, CogniteAPIError) or getattr(exc, "code", None) != 403:
+        return None
+    return check_spaces(client, acl=MODELS_ACL, action="WRITE", spaces=spaces)
 
 
 def _parse_space_ids(spaces: list[str | dict[str, Any]] | str) -> list[str]:
@@ -119,6 +133,7 @@ def delete_spaces(
     ``completedBatches`` and the space ids already deleted. Dry run does not
     validate dependency conflicts.
     """
+    space_ids: list[str] = []
     try:
         space_ids = _parse_space_ids(spaces)
         if not space_ids:
@@ -146,10 +161,25 @@ def delete_spaces(
                 indent=2,
             )
 
+        existing_list: list[Any] = []
+        for batch in _chunks(space_ids):
+            existing_list.extend(_as_space_list(client.data_modeling.spaces.retrieve(spaces=batch)))
+        found = {getattr(s, "space", None) for s in existing_list}
+        missing = [s for s in space_ids if s not in found]
+        to_delete = [s for s in space_ids if s in found]
+        if not to_delete:
+            return json.dumps(
+                {
+                    "error": "NotFound",
+                    "message": "none of the requested spaces exist",
+                    "missing": missing,
+                }
+            )
+
         deleted_list: list[Any] = []
         succeeded: list[str] = []
         completed_batches = 0
-        for batch in _chunks(space_ids):
+        for batch in _chunks(to_delete):
             try:
                 deleted = client.data_modeling.spaces.delete(spaces=batch)
             except CogniteException as exc:
@@ -157,30 +187,33 @@ def delete_spaces(
                     exc,
                     completed_batches=completed_batches,
                     space_ids=succeeded,
+                    access=_access_on_forbidden(client, exc, space_ids),
                 )
             completed_batches += 1
             succeeded.extend(batch)
             deleted_list.extend(_deleted_space_ids(deleted))
-        return json.dumps(
-            {
-                "dryRun": False,
-                "deleted": bool(deleted_list),
-                "count": len(deleted_list),
-                "items": [{"space": s} for s in deleted_list],
-            },
-            indent=2,
-        )
+        body: dict[str, Any] = {
+            "dryRun": False,
+            "deleted": bool(deleted_list),
+            "count": len(deleted_list),
+            "items": [{"space": s} for s in deleted_list],
+        }
+        if missing:
+            body["missing"] = missing
+        return json.dumps(body, indent=2)
     except (TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
         return json.dumps({"error": "InvalidArgument", "message": str(exc)})
     except CogniteAPIError as exc:
         logger.exception("CDF API error deleting spaces")
-        return json.dumps(
-            {
-                "error": "CogniteAPIError",
-                "code": getattr(exc, "code", None),
-                "message": str(exc),
-            }
-        )
+        body = {
+            "error": "CogniteAPIError",
+            "code": getattr(exc, "code", None),
+            "message": str(exc),
+        }
+        access = _access_on_forbidden(client, exc, space_ids)
+        if access is not None:
+            body["access"] = access
+        return json.dumps(body)
     except CogniteException as exc:
         logger.exception("Cognite error deleting spaces")
         return json.dumps({"error": type(exc).__name__, "message": str(exc)})

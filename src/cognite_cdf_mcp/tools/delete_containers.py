@@ -75,10 +75,11 @@ def delete_containers(
     to delete. Requires ``dataModelsAcl:WRITE`` for an actual delete.
 
     Delete and retrieve-by-ids send at most ``MAX_SCHEMA_PER_REQUEST`` (100)
-    containers per CDF call. If a later batch fails, the error includes
-    ``completedBatches`` and the container ids already deleted. Dry run does not
-    validate dependency conflicts (for example views still referencing the
-    container).
+    containers per CDF call. Real deletes retrieve first and only send ids that
+    exist; missing ids are reported in ``missing`` (or ``NotFound`` when none
+    exist). If a later batch fails, the error includes ``completedBatches`` and
+    the container ids already deleted. Dry run does not validate dependency
+    conflicts (for example views still referencing the container).
     """
     space_ids: list[str] = []
     try:
@@ -124,10 +125,29 @@ def delete_containers(
                 indent=2,
             )
 
+        existing_list: list[Any] = []
+        for batch in batches:
+            existing_list.extend(as_list(client.data_modeling.containers.retrieve(ids=batch)))
+        found = {
+            (getattr(item, "space", None), getattr(item, "external_id", None))
+            for item in existing_list
+        }
+        missing = [_ref_dict(item) for item in ids if (item.space, item.external_id) not in found]
+        to_delete = [item for item in ids if (item.space, item.external_id) in found]
+        if not to_delete:
+            return json.dumps(
+                {
+                    "error": "NotFound",
+                    "message": "none of the requested containers exist",
+                    "missing": missing,
+                }
+            )
+
+        delete_batches = chunk(to_delete, MAX_SCHEMA_PER_REQUEST)
         deleted_items: list[dict[str, str]] = []
         succeeded: list[dict[str, str]] = []
         completed_batches = 0
-        for batch in batches:
+        for batch in delete_batches:
             try:
                 deleted = client.data_modeling.containers.delete(ids=batch)
             except CogniteException as exc:
@@ -136,6 +156,7 @@ def delete_containers(
                     completed_batches=completed_batches,
                     items=succeeded,
                     action="deleting containers",
+                    access=_access_on_forbidden(client, exc, space_ids),
                 )
             completed_batches += 1
             succeeded.extend(_ref_dict(item) for item in batch)
@@ -144,17 +165,17 @@ def delete_containers(
                     deleted_items.append(_ref_dict(item))
                 elif isinstance(item, tuple) and len(item) == 2:
                     deleted_items.append({"space": str(item[0]), "externalId": str(item[1])})
-        return json.dumps(
-            {
-                "dryRun": False,
-                "deleted": bool(deleted_items or succeeded),
-                "count": len(deleted_items) if deleted_items else len(succeeded),
-                "batches": len(batches),
-                "maxBatchSize": MAX_SCHEMA_PER_REQUEST,
-                "items": deleted_items or succeeded,
-            },
-            indent=2,
-        )
+        body: dict[str, Any] = {
+            "dryRun": False,
+            "deleted": bool(deleted_items or succeeded),
+            "count": len(deleted_items) if deleted_items else len(succeeded),
+            "batches": len(delete_batches),
+            "maxBatchSize": MAX_SCHEMA_PER_REQUEST,
+            "items": deleted_items or succeeded,
+        }
+        if missing:
+            body["missing"] = missing
+        return json.dumps(body, indent=2)
     except (TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
         return json.dumps({"error": "InvalidArgument", "message": str(exc)})
     except CogniteAPIError as exc:

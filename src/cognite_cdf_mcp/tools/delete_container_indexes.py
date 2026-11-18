@@ -17,7 +17,12 @@ from cognite_cdf_mcp.tools.params import (
     chunk,
     parse_object_list,
 )
-from cognite_cdf_mcp.tools.schema_common import as_list, dump_schema, require_object_list
+from cognite_cdf_mcp.tools.schema_common import (
+    as_list,
+    dump_schema,
+    partial_cognite_error,
+    require_object_list,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,28 +66,6 @@ def _existing_index_names(container: Any) -> set[str]:
     if isinstance(indexes, dict):
         return {str(key) for key in indexes}
     return set()
-
-
-def _partial_error(
-    exc: CogniteException,
-    *,
-    completed_batches: int,
-    items: list[dict[str, str]],
-) -> str:
-    if isinstance(exc, CogniteAPIError):
-        logger.exception("CDF API error deleting container indexes")
-        body: dict[str, Any] = {
-            "error": "CogniteAPIError",
-            "code": getattr(exc, "code", None),
-            "message": str(exc),
-        }
-    else:
-        logger.exception("Cognite error deleting container indexes")
-        body = {"error": type(exc).__name__, "message": str(exc)}
-    if completed_batches:
-        body["completedBatches"] = completed_batches
-        body["items"] = items
-    return json.dumps(body)
 
 
 def _access_on_forbidden(
@@ -183,17 +166,51 @@ def delete_container_indexes(
                 indent=2,
             )
 
+        by_container: dict[tuple[str, str], list[str]] = {}
+        for container_id, identifier in refs:
+            key = (container_id.space, container_id.external_id)
+            by_container.setdefault(key, []).append(identifier)
+
+        existing_by_container: dict[tuple[str, str], set[str]] = {}
+        container_ids = [ContainerId(space, external_id) for space, external_id in by_container]
+        for batch in chunk(container_ids, 100):
+            retrieved = client.data_modeling.containers.retrieve(ids=batch)
+            for container in as_list(retrieved):
+                key = (container.space, container.external_id)
+                existing_by_container[key] = _existing_index_names(container)
+
+        to_delete: list[IndexRef] = []
+        missing: list[dict[str, str]] = []
+        for container_id, identifier in refs:
+            key = (container_id.space, container_id.external_id)
+            present = existing_by_container.get(key, set())
+            if identifier in present:
+                to_delete.append((container_id, identifier))
+            else:
+                missing.append(_ref_dict((container_id, identifier)))
+        if not to_delete:
+            return json.dumps(
+                {
+                    "error": "NotFound",
+                    "message": "none of the requested container indexes exist",
+                    "missing": missing,
+                }
+            )
+
+        delete_batches = chunk(to_delete, MAX_CONTAINER_INDEX_DELETE)
         deleted_items: list[dict[str, str]] = []
         succeeded: list[dict[str, str]] = []
         completed_batches = 0
-        for batch in batches:
+        for batch in delete_batches:
             try:
                 deleted = client.data_modeling.containers.delete_indexes(batch)
             except CogniteException as exc:
-                return _partial_error(
+                return partial_cognite_error(
                     exc,
                     completed_batches=completed_batches,
                     items=succeeded,
+                    action="deleting container indexes",
+                    access=_access_on_forbidden(client, exc, space_ids),
                 )
             completed_batches += 1
             succeeded.extend(_ref_dict(ref) for ref in batch)
@@ -201,17 +218,17 @@ def delete_container_indexes(
                 if isinstance(item, tuple) and len(item) == 2:
                     container_id, identifier = item
                     deleted_items.append(_ref_dict((container_id, str(identifier))))
-        return json.dumps(
-            {
-                "dryRun": False,
-                "deleted": bool(deleted_items or succeeded),
-                "count": len(deleted_items) if deleted_items else len(succeeded),
-                "batches": len(batches),
-                "maxBatchSize": MAX_CONTAINER_INDEX_DELETE,
-                "items": deleted_items or succeeded,
-            },
-            indent=2,
-        )
+        body: dict[str, Any] = {
+            "dryRun": False,
+            "deleted": bool(deleted_items or succeeded),
+            "count": len(deleted_items) if deleted_items else len(succeeded),
+            "batches": len(delete_batches),
+            "maxBatchSize": MAX_CONTAINER_INDEX_DELETE,
+            "items": deleted_items or succeeded,
+        }
+        if missing:
+            body["missing"] = missing
+        return json.dumps(body, indent=2)
     except (TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
         return json.dumps({"error": "InvalidArgument", "message": str(exc)})
     except CogniteAPIError as exc:

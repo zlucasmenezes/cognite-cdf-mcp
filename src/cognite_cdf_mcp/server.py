@@ -641,9 +641,11 @@ def delete_containers(
     Requires dataModelsAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only); pass dry_run=false to delete.
     At most 100 containers are sent per CDF request (delete and retrieve-by-ids).
-    Longer lists run sequentially. If a later batch fails, the error includes
-    completedBatches and the container ids already deleted. Dry run does not
-    validate dependency conflicts (for example views still referencing the container).
+    Longer lists run sequentially. Real deletes skip ids that do not exist and
+    report them in missing (NotFound when none exist). If a later batch fails,
+    the error includes completedBatches and the container ids already deleted.
+    Dry run does not validate dependency conflicts (for example views still
+    referencing the container).
     containers example: [{"space": "sp_x", "externalId": "Asset"}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -668,9 +670,11 @@ def delete_data_models(
     Requires dataModelsAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only); pass dry_run=false to delete.
     At most 100 data models are sent per CDF request (delete and retrieve-by-ids).
-    Longer lists run sequentially. If a later batch fails, the error includes
-    completedBatches and the data model ids already deleted. Deleting a data model
-    does not delete its referenced views. Dry run does not validate dependency conflicts.
+    Longer lists run sequentially. Real deletes skip ids that do not exist and
+    report them in missing (NotFound when none exist). If a later batch fails,
+    the error includes completedBatches and the data model ids already deleted.
+    Deleting a data model does not delete its referenced views. Dry run does not
+    validate dependency conflicts.
     data_models example: [{"space": "sp_x", "externalId": "Plant", "version": "v1"}]
 
     environment: optional alias from list_environments (default: session environment;
