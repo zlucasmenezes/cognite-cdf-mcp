@@ -11,7 +11,12 @@ from cognite.client.data_classes.data_modeling import ContainerApply, ContainerI
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
 from cognite_cdf_mcp.tools.access import MODELS_ACL, check_spaces, denial_detail, is_denied
-from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, MAX_SCHEMA_PER_REQUEST, parse_object_list
+from cognite_cdf_mcp.tools.params import (
+    DEFAULT_DRY_RUN,
+    MAX_INDEXES_PER_CONTAINER,
+    MAX_SCHEMA_PER_REQUEST,
+    parse_object_list,
+)
 from cognite_cdf_mcp.tools.schema_common import (
     as_list,
     dump_schema,
@@ -24,6 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_container(item: dict[str, Any]) -> ContainerApply:
+    indexes = item.get("indexes")
+    if isinstance(indexes, dict) and len(indexes) > MAX_INDEXES_PER_CONTAINER:
+        external_id = item.get("externalId") or item.get("external_id") or "?"
+        raise ValueError(
+            f"container {external_id!r} has {len(indexes)} indexes; "
+            f"CDF allows at most {MAX_INDEXES_PER_CONTAINER}"
+        )
     try:
         return ContainerApply.load(item)
     except (TypeError, ValueError, KeyError) as exc:
@@ -123,6 +135,7 @@ def apply_containers(
                     completed_batches=completed_batches,
                     items=succeeded,
                     action="applying containers",
+                    access=_access_on_forbidden(client, exc, space_ids),
                 )
             completed_batches += 1
             succeeded.extend(_container_ref(item) for item in batch)

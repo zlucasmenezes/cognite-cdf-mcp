@@ -129,6 +129,7 @@ def apply_views(
                     completed_batches=completed_batches,
                     items=succeeded,
                     action="applying views",
+                    access=_access_on_forbidden(client, exc, space_ids),
                 )
             completed_batches += 1
             succeeded.extend(_view_ref(item) for item in batch)

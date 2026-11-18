@@ -172,6 +172,7 @@ def apply_data_models(
                     completed_batches=completed_batches,
                     items=succeeded,
                     action="applying data models",
+                    access=_access_on_forbidden(client, exc, space_ids),
                 )
             completed_batches += 1
             succeeded.extend(_data_model_ref(item) for item in batch)
