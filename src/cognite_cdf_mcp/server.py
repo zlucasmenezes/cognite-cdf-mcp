@@ -745,9 +745,10 @@ def delete_spaces(
     Requires dataModelsAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only); pass dry_run=false to delete.
     At most 100 spaces are sent per CDF request (delete and retrieve-by-ids).
-    Longer lists run sequentially. If a later batch fails, the error includes
-    completedBatches and the space ids already deleted. Dry run does not
-    validate dependency conflicts.
+    Longer lists run sequentially. Real deletes skip ids that do not exist and
+    report them in missing (NotFound when none exist). If a later batch fails,
+    the error includes completedBatches and the space ids already deleted.
+    Dry run does not validate dependency conflicts.
     spaces example: ["sp_x"] or [{"space": "sp_x"}]
 
     environment: optional alias from list_environments (default: session environment;
@@ -827,7 +828,9 @@ def delete_view(
 
     Requires dataModelsAcl:WRITE for an actual delete.
     Defaults to dry_run=true (preview only; dependency conflicts are not validated).
+    Dry run reports access and sets wouldDelete false when WRITE is missing.
     Pass dry_run=false to permanently remove the view version from the project.
+    A 403 response includes the access object from token inspect.
 
     environment: optional alias from list_environments (default: session environment;
     see use_environment).

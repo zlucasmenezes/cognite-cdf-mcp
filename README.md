@@ -63,8 +63,8 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 | `delete_container_indexes` | Delete container indexes (`dry_run=true` by default; ≤10 per CDF request; indexes are not editable in place) |
 | `delete_containers` | Delete containers by space / externalId (`dry_run=true` by default; ≤100 per CDF request; dry run does not validate dependencies) |
 | `delete_data_models` | Delete data models by space / externalId / version (`dry_run=true` by default; ≤100 per CDF request; does not delete referenced views) |
-| `delete_spaces` | Delete spaces by id (`dry_run=true` by default; ≤100 per CDF request; dry run does not validate dependencies) |
-| `delete_view` | Delete one view by space / externalId / version (`dry_run=true` by default; dry run only needs `READ`) |
+| `delete_spaces` | Delete spaces by id (`dry_run=true` by default; ≤100 per CDF request; skips missing ids; dry run does not validate dependencies) |
+| `delete_view` | Delete one view by space / externalId / version (`dry_run=true` by default; dry run reports `access`; 403 includes `access`) |
 
 ### Data Modeling limits (agents)
 
