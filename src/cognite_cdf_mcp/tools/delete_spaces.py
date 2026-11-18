@@ -9,7 +9,7 @@ from typing import Any
 from cognite.client import CogniteClient
 from cognite.client.exceptions import CogniteAPIError, CogniteException
 
-from cognite_cdf_mcp.tools.access import MODELS_ACL, check_spaces
+from cognite_cdf_mcp.tools.access import MODELS_ACL, check_spaces, denial_detail, is_denied
 from cognite_cdf_mcp.tools.params import DEFAULT_DRY_RUN, MAX_SPACES_PER_REQUEST
 
 logger = logging.getLogger(__name__)
@@ -129,9 +129,11 @@ def delete_spaces(
     to delete. Requires ``dataModelsAcl:WRITE`` for an actual delete.
 
     Delete and retrieve-by-ids send at most ``MAX_SPACES_PER_REQUEST`` (100)
-    spaces per CDF call. If a later batch fails, the error includes
-    ``completedBatches`` and the space ids already deleted. Dry run does not
-    validate dependency conflicts.
+    spaces per CDF call. Real deletes retrieve first and only send ids that
+    exist; missing ids are reported in ``missing`` (or ``NotFound`` when none
+    exist). If a later batch fails, the error includes ``completedBatches`` and
+    the space ids already deleted. Dry run does not validate dependency
+    conflicts.
     """
     space_ids: list[str] = []
     try:
@@ -146,17 +148,23 @@ def delete_spaces(
                 existing_list.extend(_as_space_list(existing))
             found = {getattr(s, "space", None) for s in existing_list}
             missing = [s for s in space_ids if s not in found]
+            access = check_spaces(client, acl=MODELS_ACL, action="WRITE", spaces=space_ids)
+            denied = is_denied(access)
+            message = (
+                "Dry run only — spaces were not deleted. "
+                "Dependency conflicts are not validated in dry run."
+            )
+            if denied:
+                message = f"{message} {denial_detail(access)}"
             return json.dumps(
                 {
                     "dryRun": True,
-                    "wouldDelete": bool(existing_list),
+                    "wouldDelete": bool(existing_list) and not denied,
                     "requested": space_ids,
                     "existing": [_serialize_space(s) for s in existing_list],
                     "missing": missing,
-                    "message": (
-                        "Dry run only — spaces were not deleted. "
-                        "Dependency conflicts are not validated in dry run."
-                    ),
+                    "access": access,
+                    "message": message,
                 },
                 indent=2,
             )
