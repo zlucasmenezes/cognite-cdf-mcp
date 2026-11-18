@@ -57,6 +57,10 @@ Every CDF tool below also accepts an optional `environment` argument that overri
 | Tool | Description |
 | --- | --- |
 | `apply_spaces` | Create/update spaces (`dry_run=true` by default; ≤100 per CDF request, sequential batches) |
+| `apply_containers` | Create/update containers and add indexes (`dry_run=true` by default; ≤100 per CDF request; indexes via `indexes` map) |
+| `apply_views` | Create/update views (`dry_run=true` by default; ≤100 per CDF request, sequential batches) |
+| `apply_data_models` | Create/update data models (`dry_run=true` by default; ≤100 per CDF request; bare view refs stay references) |
+| `delete_container_indexes` | Delete container indexes (`dry_run=true` by default; ≤10 per CDF request; indexes are not editable in place) |
 | `delete_spaces` | Delete spaces by id (`dry_run=true` by default; ≤100 per CDF request; dry run does not validate dependencies) |
 | `delete_view` | Delete one view by space / externalId / version (`dry_run=true` by default; dry run only needs `READ`) |
 
