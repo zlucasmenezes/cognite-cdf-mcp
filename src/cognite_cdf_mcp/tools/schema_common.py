@@ -51,6 +51,7 @@ def partial_cognite_error(
     completed_batches: int,
     items: list[dict[str, Any]],
     action: str,
+    access: dict[str, Any] | None = None,
 ) -> str:
     """JSON error body when a later schema batch fails after earlier success."""
     if isinstance(exc, CogniteAPIError):
@@ -66,6 +67,8 @@ def partial_cognite_error(
     if completed_batches:
         body["completedBatches"] = completed_batches
         body["items"] = items
+    if access is not None:
+        body["access"] = access
     return json.dumps(body)
 
 
