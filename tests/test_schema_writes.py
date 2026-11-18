@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
-from cognite.client.data_classes.data_modeling import ContainerId, ViewId
+from cognite.client.data_classes.data_modeling import ContainerId, DataModelId, ViewId
 from cognite.client.exceptions import CogniteAPIError
 
 from cognite_cdf_mcp.tools.apply_containers import apply_containers
@@ -15,6 +15,7 @@ from cognite_cdf_mcp.tools.apply_data_models import apply_data_models
 from cognite_cdf_mcp.tools.apply_views import apply_views
 from cognite_cdf_mcp.tools.delete_container_indexes import delete_container_indexes
 from cognite_cdf_mcp.tools.delete_containers import delete_containers
+from cognite_cdf_mcp.tools.delete_data_models import delete_data_models
 from cognite_cdf_mcp.tools.params import MAX_CONTAINER_INDEX_DELETE, MAX_SCHEMA_PER_REQUEST
 
 
@@ -336,3 +337,56 @@ def test_delete_containers_later_batch_reports_completed_ids() -> None:
     assert out["error"] == "CogniteAPIError"
     assert out["completedBatches"] == 1
     assert len(out["items"]) == MAX_SCHEMA_PER_REQUEST
+
+
+def test_delete_data_models_chunks_at_100() -> None:
+    client = MagicMock()
+    client.data_modeling.data_models.delete.side_effect = lambda ids: list(ids)
+    items = [
+        {"space": "sp_x", "externalId": f"m-{i}", "version": "v1"}
+        for i in range(MAX_SCHEMA_PER_REQUEST + 1)
+    ]
+    out = json.loads(delete_data_models(client, data_models=items, dry_run=False))
+    assert out["deleted"] is True
+    assert out["batches"] == 2
+    assert client.data_modeling.data_models.delete.call_count == 2
+    first = client.data_modeling.data_models.delete.call_args_list[0].kwargs["ids"]
+    second = client.data_modeling.data_models.delete.call_args_list[1].kwargs["ids"]
+    assert len(first) == MAX_SCHEMA_PER_REQUEST
+    assert len(second) == 1
+    assert first[0] == DataModelId("sp_x", "m-0", "v1")
+
+
+def test_delete_data_models_dry_run_reports_missing() -> None:
+    client = MagicMock()
+    client.data_modeling.data_models.retrieve.return_value = [
+        _schema_obj("sp_x", "Plant", version="v1")
+    ]
+    client.iam.token.inspect.return_value = SimpleNamespace(capabilities=[])
+    out = json.loads(
+        delete_data_models(
+            client,
+            data_models=[
+                {"space": "sp_x", "externalId": "Plant", "version": "v1"},
+                {"space": "sp_x", "externalId": "Missing", "version": "v1"},
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["dryRun"] is True
+    assert out["found"] == 1
+    assert out["missing"] == [{"space": "sp_x", "externalId": "Missing", "version": "v1"}]
+    assert "Referenced views are not deleted" in out["message"]
+    assert client.data_modeling.data_models.delete.call_count == 0
+
+
+def test_delete_data_models_rejects_incomplete_id() -> None:
+    out = json.loads(
+        delete_data_models(
+            MagicMock(),
+            data_models=[{"space": "sp_x", "externalId": "Plant"}],
+            dry_run=True,
+        )
+    )
+    assert out["error"] == "InvalidArgument"
+    assert "version" in out["message"]

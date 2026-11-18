@@ -44,6 +44,7 @@ def test_server_imports_and_registers_core_tools() -> None:
         "apply_data_models",
         "delete_spaces",
         "delete_containers",
+        "delete_data_models",
         "delete_container_indexes",
         "apply_instances",
         "delete_instances",
@@ -75,6 +76,13 @@ def test_server_imports_and_registers_core_tools() -> None:
     assert "completedBatches" in delete_containers_doc
     assert "does not validate dependency conflicts" in " ".join(delete_containers_doc.split())
     assert delete_containers.annotations.destructive_hint is True
+
+    delete_data_models = tools["delete_data_models"]
+    delete_data_models_doc = delete_data_models.description or ""
+    assert "100" in delete_data_models_doc
+    assert "completedBatches" in delete_data_models_doc
+    assert "does not delete its referenced views" in " ".join(delete_data_models_doc.split())
+    assert delete_data_models.annotations.destructive_hint is True
 
     apply_doc = tools["apply_instances"].description or ""
     assert "replace=true" in apply_doc
