@@ -14,6 +14,7 @@ from cognite_cdf_mcp.tools.apply_containers import apply_containers
 from cognite_cdf_mcp.tools.apply_data_models import apply_data_models
 from cognite_cdf_mcp.tools.apply_views import apply_views
 from cognite_cdf_mcp.tools.delete_container_indexes import delete_container_indexes
+from cognite_cdf_mcp.tools.delete_containers import delete_containers
 from cognite_cdf_mcp.tools.params import MAX_CONTAINER_INDEX_DELETE, MAX_SCHEMA_PER_REQUEST
 
 
@@ -287,3 +288,51 @@ def test_delete_container_indexes_later_batch_reports_completed_ids() -> None:
     assert out["error"] == "CogniteAPIError"
     assert out["completedBatches"] == 1
     assert len(out["items"]) == MAX_CONTAINER_INDEX_DELETE
+
+
+def test_delete_containers_chunks_at_100() -> None:
+    client = MagicMock()
+    client.data_modeling.containers.delete.side_effect = lambda ids: list(ids)
+    items = [{"space": "sp_x", "externalId": f"c-{i}"} for i in range(MAX_SCHEMA_PER_REQUEST + 1)]
+    out = json.loads(delete_containers(client, containers=items, dry_run=False))
+    assert out["deleted"] is True
+    assert out["batches"] == 2
+    assert client.data_modeling.containers.delete.call_count == 2
+    first = client.data_modeling.containers.delete.call_args_list[0].kwargs["ids"]
+    second = client.data_modeling.containers.delete.call_args_list[1].kwargs["ids"]
+    assert len(first) == MAX_SCHEMA_PER_REQUEST
+    assert len(second) == 1
+    assert first[0] == ContainerId("sp_x", "c-0")
+
+
+def test_delete_containers_dry_run_reports_missing() -> None:
+    client = MagicMock()
+    client.data_modeling.containers.retrieve.return_value = [_schema_obj("sp_x", "Asset")]
+    client.iam.token.inspect.return_value = SimpleNamespace(capabilities=[])
+    out = json.loads(
+        delete_containers(
+            client,
+            containers=[
+                {"space": "sp_x", "externalId": "Asset"},
+                {"space": "sp_x", "externalId": "Missing"},
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["dryRun"] is True
+    assert out["found"] == 1
+    assert out["missing"] == [{"space": "sp_x", "externalId": "Missing"}]
+    assert client.data_modeling.containers.delete.call_count == 0
+
+
+def test_delete_containers_later_batch_reports_completed_ids() -> None:
+    client = MagicMock()
+    client.data_modeling.containers.delete.side_effect = [
+        [ContainerId("sp_x", f"c-{i}") for i in range(MAX_SCHEMA_PER_REQUEST)],
+        CogniteAPIError("delete failed", 400),
+    ]
+    items = [{"space": "sp_x", "externalId": f"c-{i}"} for i in range(MAX_SCHEMA_PER_REQUEST + 1)]
+    out = json.loads(delete_containers(client, containers=items, dry_run=False))
+    assert out["error"] == "CogniteAPIError"
+    assert out["completedBatches"] == 1
+    assert len(out["items"]) == MAX_SCHEMA_PER_REQUEST
