@@ -36,6 +36,17 @@ def test_server_imports_and_registers_core_tools() -> None:
     assert filter_docs.read_only_hint is True
     assert tools["query_instances"].annotations.open_world_hint is True
 
+    # Schema write tools added on feat/schema-writes must stay registered.
+    for name in (
+        "apply_containers",
+        "apply_views",
+        "apply_data_models",
+        "delete_container_indexes",
+        "delete_containers",
+        "delete_data_models",
+    ):
+        assert name in tools, name
+
     # Write tools share DEFAULT_DRY_RUN (experimental safety switch).
     for name in (
         "apply_spaces",

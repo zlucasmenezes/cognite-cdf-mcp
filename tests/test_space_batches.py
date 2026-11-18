@@ -109,6 +109,9 @@ def test_apply_spaces_dry_run_chunks_retrieve() -> None:
 
 def test_delete_spaces_chunks_and_reports_later_failure() -> None:
     client = MagicMock()
+    client.data_modeling.spaces.retrieve.side_effect = lambda spaces: [
+        _space_obj(space_id) for space_id in spaces
+    ]
     client.data_modeling.spaces.delete.side_effect = [
         [f"s-{i}" for i in range(MAX_SPACES_PER_REQUEST)],
         CogniteAPIError("delete failed", 409),

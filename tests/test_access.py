@@ -11,8 +11,10 @@ from unittest.mock import MagicMock
 from cognite.client.exceptions import CogniteAPIError
 
 from cognite_cdf_mcp.tools.access import get_access
+from cognite_cdf_mcp.tools.apply_containers import apply_containers
 from cognite_cdf_mcp.tools.apply_instances import apply_instances
 from cognite_cdf_mcp.tools.apply_spaces import apply_spaces
+from cognite_cdf_mcp.tools.delete_containers import delete_containers
 from cognite_cdf_mcp.tools.delete_instances import delete_instances
 
 
@@ -258,3 +260,45 @@ def test_apply_spaces_dry_run_denies_missing_write() -> None:
     assert out["access"]["acl"] == "dataModelsAcl"
     assert out["access"]["missingSpaces"] == ["sp_new"]
     assert client.data_modeling.spaces.apply.call_count == 0
+
+
+def test_apply_containers_dry_run_denies_missing_write() -> None:
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client.data_modeling.containers.retrieve.return_value = []
+    out = json.loads(
+        apply_containers(
+            client,
+            containers=[
+                {
+                    "space": "sp_x",
+                    "externalId": "Asset",
+                    "usedFor": "node",
+                    "properties": {
+                        "name": {"type": {"type": "text", "list": False}, "nullable": True},
+                    },
+                }
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["wouldApply"] is False
+    assert out["access"]["acl"] == "dataModelsAcl"
+    assert out["access"]["missingSpaces"] == ["sp_x"]
+    assert client.data_modeling.containers.apply.call_count == 0
+
+
+def test_delete_containers_dry_run_denies_missing_write() -> None:
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client.data_modeling.containers.retrieve.return_value = [
+        SimpleNamespace(space="sp_x", external_id="Asset", dump=lambda camel_case=True: {})
+    ]
+    out = json.loads(
+        delete_containers(
+            client,
+            containers=[{"space": "sp_x", "externalId": "Asset"}],
+            dry_run=True,
+        )
+    )
+    assert out["wouldDelete"] is False
+    assert out["access"]["missingSpaces"] == ["sp_x"]
+    assert client.data_modeling.containers.delete.call_count == 0

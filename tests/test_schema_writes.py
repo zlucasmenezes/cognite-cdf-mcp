@@ -16,7 +16,11 @@ from cognite_cdf_mcp.tools.apply_views import apply_views
 from cognite_cdf_mcp.tools.delete_container_indexes import delete_container_indexes
 from cognite_cdf_mcp.tools.delete_containers import delete_containers
 from cognite_cdf_mcp.tools.delete_data_models import delete_data_models
-from cognite_cdf_mcp.tools.params import MAX_CONTAINER_INDEX_DELETE, MAX_SCHEMA_PER_REQUEST
+from cognite_cdf_mcp.tools.params import (
+    MAX_CONTAINER_INDEX_DELETE,
+    MAX_INDEXES_PER_CONTAINER,
+    MAX_SCHEMA_PER_REQUEST,
+)
 
 
 def _container(external_id: str, *, with_index: bool = False) -> dict[str, Any]:
@@ -216,6 +220,9 @@ def test_apply_containers_creates_indexes_via_payload() -> None:
 
 def test_delete_container_indexes_chunks_at_10() -> None:
     client = MagicMock()
+    existing = _schema_obj("sp_x", "Asset")
+    existing.indexes = {f"idx-{i}": object() for i in range(MAX_CONTAINER_INDEX_DELETE + 1)}
+    client.data_modeling.containers.retrieve.return_value = [existing]
     client.data_modeling.containers.delete_indexes.side_effect = lambda ids: list(ids)
     items = [
         {
@@ -273,6 +280,9 @@ def test_delete_container_indexes_dry_run_reports_found_and_missing() -> None:
 
 def test_delete_container_indexes_later_batch_reports_completed_ids() -> None:
     client = MagicMock()
+    existing = _schema_obj("sp_x", "Asset")
+    existing.indexes = {f"idx-{i}": object() for i in range(MAX_CONTAINER_INDEX_DELETE + 1)}
+    client.data_modeling.containers.retrieve.return_value = [existing]
     client.data_modeling.containers.delete_indexes.side_effect = [
         [(ContainerId("sp_x", "Asset"), f"idx-{i}") for i in range(MAX_CONTAINER_INDEX_DELETE)],
         CogniteAPIError("delete failed", 400),
@@ -293,6 +303,9 @@ def test_delete_container_indexes_later_batch_reports_completed_ids() -> None:
 
 def test_delete_containers_chunks_at_100() -> None:
     client = MagicMock()
+    client.data_modeling.containers.retrieve.side_effect = lambda ids: [
+        _schema_obj(item.space, item.external_id) for item in ids
+    ]
     client.data_modeling.containers.delete.side_effect = lambda ids: list(ids)
     items = [{"space": "sp_x", "externalId": f"c-{i}"} for i in range(MAX_SCHEMA_PER_REQUEST + 1)]
     out = json.loads(delete_containers(client, containers=items, dry_run=False))
@@ -328,6 +341,9 @@ def test_delete_containers_dry_run_reports_missing() -> None:
 
 def test_delete_containers_later_batch_reports_completed_ids() -> None:
     client = MagicMock()
+    client.data_modeling.containers.retrieve.side_effect = lambda ids: [
+        _schema_obj(item.space, item.external_id) for item in ids
+    ]
     client.data_modeling.containers.delete.side_effect = [
         [ContainerId("sp_x", f"c-{i}") for i in range(MAX_SCHEMA_PER_REQUEST)],
         CogniteAPIError("delete failed", 400),
@@ -339,8 +355,33 @@ def test_delete_containers_later_batch_reports_completed_ids() -> None:
     assert len(out["items"]) == MAX_SCHEMA_PER_REQUEST
 
 
+def test_delete_containers_skips_missing_on_real_delete() -> None:
+    client = MagicMock()
+    client.data_modeling.containers.retrieve.return_value = [_schema_obj("sp_x", "Asset")]
+    client.data_modeling.containers.delete.side_effect = lambda ids: list(ids)
+    out = json.loads(
+        delete_containers(
+            client,
+            containers=[
+                {"space": "sp_x", "externalId": "Asset"},
+                {"space": "sp_x", "externalId": "Missing"},
+            ],
+            dry_run=False,
+        )
+    )
+    assert out["deleted"] is True
+    assert out["count"] == 1
+    assert out["items"] == [{"space": "sp_x", "externalId": "Asset"}]
+    assert out["missing"] == [{"space": "sp_x", "externalId": "Missing"}]
+    deleted_ids = client.data_modeling.containers.delete.call_args.kwargs["ids"]
+    assert deleted_ids == [ContainerId("sp_x", "Asset")]
+
+
 def test_delete_data_models_chunks_at_100() -> None:
     client = MagicMock()
+    client.data_modeling.data_models.retrieve.side_effect = lambda ids, inline_views=False: [
+        _schema_obj(item.space, item.external_id, version=item.version) for item in ids
+    ]
     client.data_modeling.data_models.delete.side_effect = lambda ids: list(ids)
     items = [
         {"space": "sp_x", "externalId": f"m-{i}", "version": "v1"}
@@ -390,3 +431,77 @@ def test_delete_data_models_rejects_incomplete_id() -> None:
     )
     assert out["error"] == "InvalidArgument"
     assert "version" in out["message"]
+
+
+def test_apply_containers_rejects_too_many_indexes() -> None:
+    indexes = {
+        f"idx-{i}": {"indexType": "btree", "properties": ["name"]}
+        for i in range(MAX_INDEXES_PER_CONTAINER + 1)
+    }
+    out = json.loads(
+        apply_containers(
+            MagicMock(),
+            containers=[
+                {
+                    "space": "sp_x",
+                    "externalId": "Asset",
+                    "usedFor": "node",
+                    "properties": {
+                        "name": {"type": {"type": "text", "list": False}, "nullable": True},
+                    },
+                    "indexes": indexes,
+                }
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["error"] == "InvalidArgument"
+    assert str(MAX_INDEXES_PER_CONTAINER) in out["message"]
+
+
+def test_apply_views_record_view_uses_stream_id() -> None:
+    client = MagicMock()
+    client.data_modeling.views.apply.side_effect = lambda items: [
+        _schema_obj(item.space, item.external_id, version=item.version) for item in items
+    ]
+    out = json.loads(
+        apply_views(
+            client,
+            views=[
+                {
+                    "space": "sp_x",
+                    "externalId": "Rec",
+                    "version": "v1",
+                    "streamId": "stream-1",
+                    "properties": {},
+                }
+            ],
+            dry_run=False,
+        )
+    )
+    assert out["applied"] is True
+    applied = client.data_modeling.views.apply.call_args.args[0]
+    assert len(applied) == 1
+    assert type(applied[0]).__name__ == "RecordViewApply"
+    assert getattr(applied[0], "stream_id", None) or applied[0].dump(camel_case=True).get(
+        "streamId"
+    )
+
+
+def test_delete_containers_partial_403_includes_access() -> None:
+    client = MagicMock()
+    client.data_modeling.containers.retrieve.side_effect = lambda ids: [
+        _schema_obj(item.space, item.external_id) for item in ids
+    ]
+    client.data_modeling.containers.delete.side_effect = [
+        [ContainerId("sp_x", f"c-{i}") for i in range(MAX_SCHEMA_PER_REQUEST)],
+        CogniteAPIError("forbidden", 403),
+    ]
+    client.iam.token.inspect.return_value = SimpleNamespace(capabilities=[])
+    items = [{"space": "sp_x", "externalId": f"c-{i}"} for i in range(MAX_SCHEMA_PER_REQUEST + 1)]
+    out = json.loads(delete_containers(client, containers=items, dry_run=False))
+    assert out["error"] == "CogniteAPIError"
+    assert out["code"] == 403
+    assert out["completedBatches"] == 1
+    assert out["access"]["allowed"] is False
+    assert "sp_x" in out["access"]["missingSpaces"]
