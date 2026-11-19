@@ -97,13 +97,13 @@ def _cdf_sources_node(
 ) -> dict[str, object]:
     source: dict[str, object] = {
         "type": source_type,
-        "space": "sp_shf_glb_dmd" if source_type == "view" else "sp_shf_glb_ing",
-        "externalId": "Shift",
+        "space": "sp_views" if source_type == "view" else "sp_containers",
+        "externalId": "Asset",
     }
     if source_type == "view":
-        source["version"] = "v1.0.0"
+        source["version"] = "v1"
     return {
-        "space": "sp_shf_san_dat",
+        "space": "sp_data",
         "externalId": external_id,
         "instanceType": "node",
         "sources": [{"source": source, "properties": {"startTime": start_time}}],
@@ -113,19 +113,19 @@ def _cdf_sources_node(
 def test_apply_accepts_cdf_sources_view_payload() -> None:
     client = MagicMock()
     client.data_modeling.instances.retrieve_nodes.return_value = []
-    out = json.loads(apply_instances(client, nodes=[_cdf_sources_node("SFT-SAN-D")], dry_run=True))
+    out = json.loads(apply_instances(client, nodes=[_cdf_sources_node("NODE-1")], dry_run=True))
     payload = out["nodes"]["payload"][0]
     assert payload["sources"][0]["properties"] == {"startTime": "05:30:00"}
     assert payload["sources"][0]["source"] == {
-        "space": "sp_shf_glb_dmd",
-        "externalId": "Shift",
-        "version": "v1.0.0",
+        "space": "sp_views",
+        "externalId": "Asset",
+        "version": "v1",
         "type": "view",
     }
     sources = client.data_modeling.instances.retrieve_nodes.call_args.kwargs["sources"]
-    assert sources[0].space == "sp_shf_glb_dmd"
-    assert sources[0].external_id == "Shift"
-    assert sources[0].version == "v1.0.0"
+    assert sources[0].space == "sp_views"
+    assert sources[0].external_id == "Asset"
+    assert sources[0].version == "v1"
 
 
 def test_apply_accepts_cdf_sources_container_payload() -> None:
@@ -134,15 +134,15 @@ def test_apply_accepts_cdf_sources_container_payload() -> None:
     out = json.loads(
         apply_instances(
             client,
-            nodes=[_cdf_sources_node("SFT-SAN-D", source_type="container")],
+            nodes=[_cdf_sources_node("NODE-1", source_type="container")],
             dry_run=False,
         )
     )
     assert out["applied"] is True
     applied = client.data_modeling.instances.apply.call_args.kwargs["nodes"][0]
     assert applied.sources[0].properties == {"startTime": "05:30:00"}
-    assert applied.sources[0].source.space == "sp_shf_glb_ing"
-    assert applied.sources[0].source.external_id == "Shift"
+    assert applied.sources[0].source.space == "sp_containers"
+    assert applied.sources[0].source.external_id == "Asset"
 
 
 def test_apply_rejects_empty_sources() -> None:
@@ -163,10 +163,10 @@ def test_apply_rejects_sources_mixed_with_flat_fields() -> None:
             client=MagicMock(),
             nodes=[
                 {
-                    **_cdf_sources_node("SFT-SAN-D"),
-                    "viewSpace": "sp_shf_glb_dmd",
-                    "viewExternalId": "Shift",
-                    "viewVersion": "v1.0.0",
+                    **_cdf_sources_node("NODE-1"),
+                    "viewSpace": "sp_views",
+                    "viewExternalId": "Asset",
+                    "viewVersion": "v1",
                     "properties": {"startTime": "05:30:00"},
                 }
             ],
