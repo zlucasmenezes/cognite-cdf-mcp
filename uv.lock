@@ -321,7 +321,7 @@ wheels = [
 
 [[package]]
 name = "cognite-cdf-mcp"
-version = "0.1.1"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "cognite-sdk" },
@@ -354,7 +354,7 @@ dev = [
 
 [[package]]
 name = "cognite-sdk"
-version = "8.23.0"
+version = "8.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx2" },
@@ -365,9 +365,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/e2/92a1f52694930a2ed7c6bf85dd8bf1ed5bb15ec59d1abb18f333539496c7/cognite_sdk-8.23.0.tar.gz", hash = "sha256:625782ef4995232e08614964c3af0fba52bd0165eea22e3e9750d9ac791d8ab7", size = 849005, upload-time = "2026-11-02T10:41:27.026Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/f3/4f398b75dba17ee1d7eb247239bede143d6b8ff012756f8e1d517ea82166/cognite_sdk-8.25.0.tar.gz", hash = "sha256:6ad6ab9b2cc49f2d1a78ab506070fa94273bbb76ad6c2b3338a3581b67d6e1f3", size = 861475, upload-time = "2026-11-13T09:37:02.397Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/65/5d/812a707ade123131d648d2a823bbaea15c756510d76e3fb56a4d113dc2a0/cognite_sdk-8.23.0-py3-none-any.whl", hash = "sha256:21948e96d35fae2f7c36760951b79706d07f322a9b56679d764ed283ebda6af3", size = 1074289, upload-time = "2026-11-02T10:41:25.257Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/39/95cec1396956c150440b49d82d2d3dd05c40eb003c8d39754e102f0c6402/cognite_sdk-8.25.0-py3-none-any.whl", hash = "sha256:b64ade7b19d917d29fa6c10ebc887116f450ec45763b3b4e26336a82040337fb", size = 1088201, upload-time = "2026-11-13T09:37:00.331Z" },
 ]
 
 [[package]]
