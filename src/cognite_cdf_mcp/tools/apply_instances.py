@@ -46,17 +46,65 @@ def _view_from_item(item: dict[str, Any]) -> ViewId:
     return ViewId(space=str(space), external_id=str(external_id), version=str(version))
 
 
+def _has_flat_property_fields(item: dict[str, Any]) -> bool:
+    return any(
+        item.get(key) is not None
+        for key in (
+            "properties",
+            "viewSpace",
+            "view_space",
+            "viewExternalId",
+            "view_external_id",
+            "viewVersion",
+            "view_version",
+        )
+    )
+
+
+def _parse_source_entry(entry: Any, *, kind: str) -> NodeOrEdgeData:
+    if not isinstance(entry, dict):
+        raise TypeError(f"{kind} sources entries must be objects")
+    try:
+        data = NodeOrEdgeData.load(entry)
+    except (TypeError, ValueError, KeyError) as exc:
+        raise ValueError(f"invalid {kind} sources entry: {exc}") from exc
+    source = data.source
+    if isinstance(source, ViewId) and not source.version:
+        raise ValueError(f"{kind} sources view entries require version")
+    if not isinstance(data.properties, dict):
+        raise TypeError(f"{kind} sources properties must be an object")
+    return data
+
+
+def _parse_sources(item: dict[str, Any], *, kind: str) -> list[NodeOrEdgeData] | None:
+    """Accept CDF ``sources`` or flat viewSpace/properties; never silently drop either."""
+    raw_sources = item.get("sources")
+    if raw_sources is not None:
+        if not isinstance(raw_sources, list):
+            raise TypeError(f"{kind} sources must be an array")
+        if not raw_sources:
+            raise ValueError(f"{kind} sources must be a non-empty array")
+        if _has_flat_property_fields(item):
+            raise ValueError(
+                f"{kind} cannot combine sources with top-level properties/"
+                "viewSpace fields; use one format"
+            )
+        return [_parse_source_entry(entry, kind=kind) for entry in raw_sources]
+
+    properties = item.get("properties")
+    if properties is not None:
+        if not isinstance(properties, dict):
+            raise TypeError(f"{kind} properties must be an object")
+        return [NodeOrEdgeData(source=_view_from_item(item), properties=properties)]
+    return None
+
+
 def _parse_node(item: dict[str, Any]) -> NodeApply:
     space = item.get("space")
     external_id = item.get("externalId") or item.get("external_id")
     if not space or not external_id:
         raise ValueError("each node requires space and externalId")
-    properties = item.get("properties")
-    sources = None
-    if properties is not None:
-        if not isinstance(properties, dict):
-            raise TypeError("node properties must be an object")
-        sources = [NodeOrEdgeData(source=_view_from_item(item), properties=properties)]
+    sources = _parse_sources(item, kind="node")
     node_type = item.get("type")
     type_ref = None
     if isinstance(node_type, dict):
@@ -88,12 +136,7 @@ def _parse_edge(item: dict[str, Any]) -> EdgeApply:
     if not isinstance(edge_type, dict):
         raise ValueError("each edge requires type {space, externalId}")
 
-    properties = item.get("properties")
-    sources = None
-    if properties is not None:
-        if not isinstance(properties, dict):
-            raise TypeError("edge properties must be an object")
-        sources = [NodeOrEdgeData(source=_view_from_item(item), properties=properties)]
+    sources = _parse_sources(item, kind="edge")
 
     return EdgeApply(
         space=str(space),
@@ -204,7 +247,7 @@ def apply_instances(
 ) -> str:
     """Create or update instances (upsert).
 
-    Node item example::
+    Node items accept either the flat view fields::
       {
         "space": "sp_x",
         "externalId": "MCH-1",
@@ -214,6 +257,26 @@ def apply_instances(
         "properties": {"name": "Pump A"},
         "existingVersion": 3
       }
+
+    or the CDF ``sources`` payload (view or container)::
+      {
+        "space": "sp_x",
+        "externalId": "MCH-1",
+        "sources": [
+          {
+            "source": {
+              "type": "view",
+              "space": "cdf_cdm",
+              "externalId": "CogniteAsset",
+              "version": "v1"
+            },
+            "properties": {"name": "Pump A"}
+          }
+        ]
+      }
+
+    Do not combine both formats on one item. Empty or malformed ``sources``
+    raise ``InvalidArgument`` instead of applying an id-only no-op.
 
     Defaults to ``DEFAULT_DRY_RUN`` (validates / retrieves existing; no write).
     When items include a view, dry-run retrieve requests that view so
