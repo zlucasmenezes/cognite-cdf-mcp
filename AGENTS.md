@@ -23,7 +23,7 @@ Schema apply (`apply_spaces`, `apply_containers`, `apply_views`, `apply_data_mod
 
 Container indexes are created through `apply_containers` (`indexes` map, btree or inverted, at most 10 per container). They cannot be edited in place. To change an index, `delete_container_indexes` (≤10 ids per CDF call) and then apply the container again with the new definition.
 
-`apply_instances` writes one sequence: all nodes first, then all edges. Each CDF call sends at most 1000 nodes and edges combined ([Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances)). Calls run one after another. If a later batch fails, earlier batches may already be written; the error JSON includes `completedBatches` and the space/externalId values already applied.
+`apply_instances` writes one sequence: all nodes first, then all edges. Each CDF call sends at most 1000 nodes and edges combined ([Instances](https://docs.cognite.com/api-reference/concepts/20230101/instances)). Calls run one after another. If a later batch fails, earlier batches may already be written; the error JSON includes `completedBatches` and the space/externalId values already applied. Node/edge items accept either flat `viewSpace` / `viewExternalId` / `viewVersion` + `properties`, or the CDF `sources` array (view or container). Do not mix both on one item; empty or malformed `sources` is rejected.
 
 `delete_instances` chunks ids to at most 1000 per call. If a later batch fails, the error includes `completedBatches` and the ids already deleted.
 

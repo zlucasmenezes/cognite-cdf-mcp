@@ -38,7 +38,7 @@ def _cap(
     return SimpleNamespace(dump=lambda camel_case=True, payload=dumped: payload)
 
 
-def _client(*caps: SimpleNamespace, project: str = "bdx-preprod") -> MagicMock:
+def _client(*caps: SimpleNamespace, project: str = "proj-preprod") -> MagicMock:
     client = MagicMock()
     client.config.project = project
     client.iam.token.inspect.return_value = SimpleNamespace(capabilities=list(caps))
@@ -47,7 +47,7 @@ def _client(*caps: SimpleNamespace, project: str = "bdx-preprod") -> MagicMock:
 
 def test_get_access_accepts_sdk_capability_user_list() -> None:
     client = MagicMock()
-    client.config.project = "bdx-dev"
+    client.config.project = "proj-dev"
     client.iam.token.inspect.return_value = SimpleNamespace(
         capabilities=UserList(
             [
@@ -55,13 +55,13 @@ def test_get_access_accepts_sdk_capability_user_list() -> None:
                     "dataModelInstancesAcl",
                     ["READ", "WRITE"],
                     all_spaces=True,
-                    projects=["bdx-dev"],
+                    projects=["proj-dev"],
                 )
             ]
         )
     )
     out = json.loads(get_access(client))
-    assert out["project"] == "bdx-dev"
+    assert out["project"] == "proj-dev"
     assert out["dataModelInstancesAcl"]["READ"] == {"all": True, "spaces": []}
     assert out["dataModelInstancesAcl"]["WRITE"]["all"] is True
 
@@ -71,24 +71,24 @@ def test_get_access_space_booleans_ignore_other_projects() -> None:
         _cap(
             "dataModelInstancesAcl",
             ["READ"],
-            spaces=["sp_shf_fra_dat"],
-            projects=["bdx-preprod"],
+            spaces=["sp_a"],
+            projects=["proj-preprod"],
         ),
         _cap(
             "dataModelInstancesAcl",
             ["READ", "WRITE"],
-            spaces=["sp_shf_fra_dat"],
-            projects=["bdx-prod"],
+            spaces=["sp_a"],
+            projects=["proj-prod"],
         ),
         _cap(
             "dataModelsAcl",
             ["READ"],
-            spaces=["sp_shf_glb_dmd"],
-            projects=["bdx-preprod"],
+            spaces=["sp_views"],
+            projects=["proj-preprod"],
         ),
     )
-    out = json.loads(get_access(client, space="sp_shf_fra_dat"))
-    assert out["project"] == "bdx-preprod"
+    out = json.loads(get_access(client, space="sp_a"))
+    assert out["project"] == "proj-preprod"
     assert out["dataModelInstancesAcl"] == {"READ": True}
     assert out["dataModelsAcl"] == {"READ": False}
 
@@ -98,14 +98,14 @@ def test_get_access_without_space_lists_write_spaces_and_extra_actions() -> None
         _cap(
             "dataModelInstancesAcl",
             ["READ", "WRITE_PROPERTIES"],
-            spaces=["sp_shf_fra_dat", "sp_shf_san_dat"],
-            projects=["bdx-preprod"],
+            spaces=["sp_a", "sp_b"],
+            projects=["proj-preprod"],
         ),
         _cap(
             "dataModelInstancesAcl",
             ["WRITE"],
             all_spaces=True,
-            projects=["bdx-preprod"],
+            projects=["proj-preprod"],
         ),
     )
     out = json.loads(get_access(client, acl="dataModelInstancesAcl"))
@@ -113,33 +113,33 @@ def test_get_access_without_space_lists_write_spaces_and_extra_actions() -> None
     instances = out["dataModelInstancesAcl"]
     assert instances["READ"] == {
         "all": False,
-        "spaces": ["sp_shf_fra_dat", "sp_shf_san_dat"],
+        "spaces": ["sp_a", "sp_b"],
     }
     assert instances["WRITE"] == {"all": True, "spaces": []}
-    assert instances["WRITE_PROPERTIES"]["spaces"] == ["sp_shf_fra_dat", "sp_shf_san_dat"]
+    assert instances["WRITE_PROPERTIES"]["spaces"] == ["sp_a", "sp_b"]
 
 
 def test_get_access_action_filter() -> None:
     client = _client(
-        _cap("dataModelInstancesAcl", ["READ", "WRITE"], all_spaces=True, projects=["bdx-preprod"])
+        _cap("dataModelInstancesAcl", ["READ", "WRITE"], all_spaces=True, projects=["proj-preprod"])
     )
-    out = json.loads(get_access(client, space="sp_shf_fra_dat", action="write"))
+    out = json.loads(get_access(client, space="sp_a", action="write"))
     assert out["dataModelInstancesAcl"] == {"WRITE": True}
     assert "dataModelsAcl" not in out
 
 
 def test_get_access_includes_non_modeling_capabilities() -> None:
-    agents = _cap("agentsAcl", ["READ", "RUN"], all_spaces=True, projects=["bdx-dev"])
+    agents = _cap("agentsAcl", ["READ", "RUN"], all_spaces=True, projects=["proj-dev"])
     assets = SimpleNamespace(
         dump=lambda camel_case=True: {
             "assetsAcl": {
                 "actions": ["READ"],
                 "scope": {"datasetScope": {"ids": [10]}},
             },
-            "projectScope": {"projects": ["bdx-dev"]},
+            "projectScope": {"projects": ["proj-dev"]},
         }
     )
-    client = _client(agents, assets, project="bdx-dev")
+    client = _client(agents, assets, project="proj-dev")
     out = json.loads(get_access(client))
     assert out["agentsAcl"]["RUN"] == {"all": True, "spaces": []}
     assert out["agentsAcl"]["READ"]["all"] is True
@@ -150,7 +150,7 @@ def test_get_access_includes_non_modeling_capabilities() -> None:
 
 def test_apply_instances_dry_run_denies_missing_write() -> None:
     client = _client(
-        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_shf_fra_dat"], projects=["bdx-preprod"])
+        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_a"], projects=["proj-preprod"])
     )
     client.data_modeling.instances.retrieve_nodes.return_value = []
     out = json.loads(
@@ -158,12 +158,12 @@ def test_apply_instances_dry_run_denies_missing_write() -> None:
             client,
             nodes=[
                 {
-                    "space": "sp_shf_fra_dat",
-                    "externalId": "SFT-Central-CEN",
-                    "viewSpace": "sp_shf_glb_dmd",
-                    "viewExternalId": "Shift",
-                    "viewVersion": "v1.0.0",
-                    "properties": {"name": "Central"},
+                    "space": "sp_a",
+                    "externalId": "NODE-1",
+                    "viewSpace": "sp_views",
+                    "viewExternalId": "Asset",
+                    "viewVersion": "v1",
+                    "properties": {"name": "Node A"},
                 }
             ],
             dry_run=True,
@@ -172,7 +172,7 @@ def test_apply_instances_dry_run_denies_missing_write() -> None:
     assert out["dryRun"] is True
     assert out["wouldApply"] is False
     assert out["access"]["allowed"] is False
-    assert out["access"]["missingSpaces"] == ["sp_shf_fra_dat"]
+    assert out["access"]["missingSpaces"] == ["sp_a"]
     assert "WRITE" in out["message"]
     assert client.data_modeling.instances.apply.call_count == 0
 
@@ -182,8 +182,8 @@ def test_apply_instances_dry_run_allows_write() -> None:
         _cap(
             "dataModelInstancesAcl",
             ["READ", "WRITE"],
-            spaces=["sp_shf_fra_dat"],
-            projects=["bdx-preprod"],
+            spaces=["sp_a"],
+            projects=["proj-preprod"],
         )
     )
     client.data_modeling.instances.retrieve_nodes.return_value = []
@@ -192,12 +192,12 @@ def test_apply_instances_dry_run_allows_write() -> None:
             client,
             nodes=[
                 {
-                    "space": "sp_shf_fra_dat",
-                    "externalId": "SFT-Central-CEN",
-                    "viewSpace": "sp_shf_glb_dmd",
-                    "viewExternalId": "Shift",
-                    "viewVersion": "v1.0.0",
-                    "properties": {"name": "Central"},
+                    "space": "sp_a",
+                    "externalId": "NODE-1",
+                    "viewSpace": "sp_views",
+                    "viewExternalId": "Asset",
+                    "viewVersion": "v1",
+                    "properties": {"name": "Node A"},
                 }
             ],
             dry_run=True,
@@ -210,7 +210,7 @@ def test_apply_instances_dry_run_allows_write() -> None:
 
 def test_apply_instances_403_includes_access() -> None:
     client = _client(
-        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"])
+        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_x"], projects=["proj-preprod"])
     )
     client.data_modeling.instances.apply.side_effect = CogniteAPIError("forbidden", 403)
     out = json.loads(
@@ -236,7 +236,7 @@ def test_apply_instances_403_includes_access() -> None:
 
 def test_delete_instances_dry_run_denies_missing_write() -> None:
     client = _client(
-        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"])
+        _cap("dataModelInstancesAcl", ["READ"], spaces=["sp_x"], projects=["proj-preprod"])
     )
     client.data_modeling.instances.retrieve_nodes.return_value = [SimpleNamespace()]
     out = json.loads(
@@ -253,7 +253,7 @@ def test_delete_instances_dry_run_denies_missing_write() -> None:
 
 
 def test_apply_spaces_dry_run_denies_missing_write() -> None:
-    client = _client(_cap("dataModelsAcl", ["READ"], all_spaces=True, projects=["bdx-preprod"]))
+    client = _client(_cap("dataModelsAcl", ["READ"], all_spaces=True, projects=["proj-preprod"]))
     client.data_modeling.spaces.retrieve.return_value = []
     out = json.loads(
         apply_spaces(client, spaces=[{"space": "sp_new", "name": "New"}], dry_run=True)
@@ -265,7 +265,7 @@ def test_apply_spaces_dry_run_denies_missing_write() -> None:
 
 
 def test_apply_containers_dry_run_denies_missing_write() -> None:
-    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["proj-preprod"]))
     client.data_modeling.containers.retrieve.return_value = []
     out = json.loads(
         apply_containers(
@@ -290,7 +290,7 @@ def test_apply_containers_dry_run_denies_missing_write() -> None:
 
 
 def test_delete_containers_dry_run_denies_missing_write() -> None:
-    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["proj-preprod"]))
     client.data_modeling.containers.retrieve.return_value = [
         SimpleNamespace(space="sp_x", external_id="Asset", dump=lambda camel_case=True: {})
     ]
@@ -307,7 +307,7 @@ def test_delete_containers_dry_run_denies_missing_write() -> None:
 
 
 def test_delete_spaces_dry_run_denies_missing_write() -> None:
-    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["proj-preprod"]))
     client.data_modeling.spaces.retrieve.return_value = [
         SimpleNamespace(
             space="sp_x",
@@ -326,7 +326,7 @@ def test_delete_spaces_dry_run_denies_missing_write() -> None:
 
 
 def test_delete_view_dry_run_denies_missing_write() -> None:
-    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["proj-preprod"]))
     client.data_modeling.views.retrieve.return_value = [
         SimpleNamespace(
             space="sp_x",
@@ -345,7 +345,7 @@ def test_delete_view_dry_run_denies_missing_write() -> None:
 
 
 def test_delete_view_403_includes_access() -> None:
-    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["bdx-preprod"]))
+    client = _client(_cap("dataModelsAcl", ["READ"], spaces=["sp_x"], projects=["proj-preprod"]))
     client.data_modeling.views.delete.side_effect = CogniteAPIError("forbidden", 403)
     out = json.loads(
         delete_view(client, space="sp_x", external_id="Asset", version="v1", dry_run=False)

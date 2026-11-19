@@ -128,7 +128,7 @@ FILTER_DOCS: dict = {
                     {
                         "equals": {
                             "property": ["node", "space"],
-                            "value": "sp_ash_fra_dat",
+                            "value": "sp_example",
                         }
                     },
                     {

@@ -85,7 +85,123 @@ def test_apply_dry_run_passes_view_and_keeps_properties() -> None:
     assert sources[0].external_id == "CogniteAsset"
     assert sources[0].version == "v1"
     assert out["nodes"]["existing"][0]["properties"] == {"name": "Pump"}
+    assert out["nodes"]["payload"][0]["sources"][0]["properties"] == {"name": "MCH-1"}
     assert client.data_modeling.instances.apply.call_count == 0
+
+
+def _cdf_sources_node(
+    external_id: str,
+    *,
+    source_type: str = "view",
+    start_time: str = "05:30:00",
+) -> dict[str, object]:
+    source: dict[str, object] = {
+        "type": source_type,
+        "space": "sp_views" if source_type == "view" else "sp_containers",
+        "externalId": "Asset",
+    }
+    if source_type == "view":
+        source["version"] = "v1"
+    return {
+        "space": "sp_data",
+        "externalId": external_id,
+        "instanceType": "node",
+        "sources": [{"source": source, "properties": {"startTime": start_time}}],
+    }
+
+
+def test_apply_accepts_cdf_sources_view_payload() -> None:
+    client = MagicMock()
+    client.data_modeling.instances.retrieve_nodes.return_value = []
+    out = json.loads(apply_instances(client, nodes=[_cdf_sources_node("NODE-1")], dry_run=True))
+    payload = out["nodes"]["payload"][0]
+    assert payload["sources"][0]["properties"] == {"startTime": "05:30:00"}
+    assert payload["sources"][0]["source"] == {
+        "space": "sp_views",
+        "externalId": "Asset",
+        "version": "v1",
+        "type": "view",
+    }
+    sources = client.data_modeling.instances.retrieve_nodes.call_args.kwargs["sources"]
+    assert sources[0].space == "sp_views"
+    assert sources[0].external_id == "Asset"
+    assert sources[0].version == "v1"
+
+
+def test_apply_accepts_cdf_sources_container_payload() -> None:
+    client = MagicMock()
+    client.data_modeling.instances.apply.return_value = SimpleNamespace(nodes=[], edges=[])
+    out = json.loads(
+        apply_instances(
+            client,
+            nodes=[_cdf_sources_node("NODE-1", source_type="container")],
+            dry_run=False,
+        )
+    )
+    assert out["applied"] is True
+    applied = client.data_modeling.instances.apply.call_args.kwargs["nodes"][0]
+    assert applied.sources[0].properties == {"startTime": "05:30:00"}
+    assert applied.sources[0].source.space == "sp_containers"
+    assert applied.sources[0].source.external_id == "Asset"
+
+
+def test_apply_rejects_empty_sources() -> None:
+    out = json.loads(
+        apply_instances(
+            client=MagicMock(),
+            nodes=[{"space": "sp_x", "externalId": "n1", "sources": []}],
+            dry_run=True,
+        )
+    )
+    assert out["error"] == "InvalidArgument"
+    assert "non-empty" in out["message"]
+
+
+def test_apply_rejects_sources_mixed_with_flat_fields() -> None:
+    out = json.loads(
+        apply_instances(
+            client=MagicMock(),
+            nodes=[
+                {
+                    **_cdf_sources_node("NODE-1"),
+                    "viewSpace": "sp_views",
+                    "viewExternalId": "Asset",
+                    "viewVersion": "v1",
+                    "properties": {"startTime": "05:30:00"},
+                }
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["error"] == "InvalidArgument"
+    assert "cannot combine sources" in out["message"]
+
+
+def test_apply_rejects_sources_view_without_version() -> None:
+    out = json.loads(
+        apply_instances(
+            client=MagicMock(),
+            nodes=[
+                {
+                    "space": "sp_x",
+                    "externalId": "n1",
+                    "sources": [
+                        {
+                            "source": {
+                                "type": "view",
+                                "space": "cdf_cdm",
+                                "externalId": "CogniteAsset",
+                            },
+                            "properties": {"name": "x"},
+                        }
+                    ],
+                }
+            ],
+            dry_run=True,
+        )
+    )
+    assert out["error"] == "InvalidArgument"
+    assert "version" in out["message"]
 
 
 def test_apply_dry_run_groups_distinct_views() -> None:
